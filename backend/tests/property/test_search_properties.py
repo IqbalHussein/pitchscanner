@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -12,8 +14,13 @@ from pitchscanner.search import SearchService
 from pitchscanner.stats import Neighbour, aggregate
 from tests.property.strategies import situations
 
+#: These properties run a real search per example, so they are capped well below
+#: the encoder properties even on the nightly profile: past a few dozen examples
+#: the extra cost buys repetition rather than coverage.
 FAST = settings(
-    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+    max_examples=int(os.environ.get("PITCHSCANNER_SEARCH_EXAMPLES", "25")),
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 
 

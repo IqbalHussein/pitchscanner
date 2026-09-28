@@ -174,6 +174,12 @@ class MemoryStore:
     def metas(self, event_ids: Sequence[str]) -> dict[str, FrameMeta]:
         return {e: self._metas[e] for e in event_ids if e in self._metas}
 
+    def matches_by_id(self, match_ids: Sequence[int]) -> dict[int, MatchRecord]:
+        return {i: self._matches[i] for i in match_ids if i in self._matches}
+
+    def frames_by_id(self, event_ids: Sequence[str]) -> dict[str, FrameRecord]:
+        return {e: self._frames[e] for e in event_ids if e in self._frames}
+
     def frames(self, limit: int | None = None) -> list[FrameRecord]:
         rows = list(self._frames.values())
         return rows[:limit] if limit else rows

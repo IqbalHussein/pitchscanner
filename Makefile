@@ -14,7 +14,7 @@ export PYTHONPATH := $(BACKEND)
 .DEFAULT_GOAL := help
 .PHONY: help venv install fixtures ingest ingest-real ingest-docker serve web \
         up down logs monitoring test test-unit test-property test-golden test-integration \
-        test-e2e bench bench-quick perf-gate eval-pool lint format typecheck openapi \
+        test-slow test-e2e bench bench-quick perf-gate eval-pool lint format typecheck openapi \
         migrate clean ci
 
 help: ## Show this help
@@ -77,8 +77,14 @@ test-cov: ## The fast tiers with coverage on the core packages
 	cd $(BACKEND) && ../$(BIN)/python -m pytest tests -q -m "not integration" \
 	  --cov=pitchscanner --cov-report=term-missing:skip-covered
 
-test-integration: ## Pipeline and API against a real Postgres (Testcontainers)
-	cd $(BACKEND) && ../$(BIN)/python -m pytest tests/integration -q -m integration
+test-integration: ## Pipeline and API against a real Postgres
+	# Set PITCHSCANNER_TEST_DSN to use a database you already have; otherwise the
+	# tier starts one with Testcontainers.
+	cd $(BACKEND) && ../$(BIN)/python -m pytest tests/integration -q -m integration -ra
+
+test-slow: ## The nightly tier: deep property tests (slow on purpose)
+	cd $(BACKEND) && HYPOTHESIS_PROFILE=nightly PITCHSCANNER_SEARCH_EXAMPLES=50 \
+	  ../$(BIN)/python -m pytest tests/property -q
 
 test-e2e: ## Playwright against the built frontend and the fixture API
 	# Playwright starts the API with a bare `python`, which is what CI provides;
@@ -87,9 +93,12 @@ test-e2e: ## Playwright against the built frontend and the fixture API
 	  PATH="$(CURDIR)/$(BIN):$$PATH" npm run test:e2e
 
 # --- benchmarks -----------------------------------------------------------
-bench: ## Full benchmark report into bench/reports/
-	$(BIN)/python -m pitchscanner.cli --store $${PITCHSCANNER_STORE:-memory} bench \
-	  --out bench/reports
+bench: ## Full benchmark report into bench/reports/ (postgres/ for a real index)
+	# Two committed reports, one per backend: a postgres run must not overwrite
+	# the memory one, because only the postgres one has meaningful recall.
+	@STORE=$${PITCHSCANNER_STORE:-memory}; OUT=bench/reports; \
+	 if [ "$$STORE" = postgres ]; then OUT=bench/reports/postgres; fi; \
+	 set -x; $(BIN)/python -m pitchscanner.cli --store $$STORE bench --out $$OUT
 
 bench-quick: ## Short benchmark, for CI regression checks
 	$(BIN)/python -m pitchscanner.cli --store memory bench --quick --out bench/reports

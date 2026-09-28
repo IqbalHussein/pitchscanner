@@ -1,7 +1,7 @@
 # Benchmark report
 
-- Generated: `2026-09-28T17:17:31+00:00`
-- Commit: `a475a4e`
+- Generated: `2026-09-28T17:56:39+00:00`
+- Commit: `931c021`
 - Hardware: `Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39` / Python `3.12.3`
 - Settings: `{"store": "memory", "index_kind": "hnsw", "hnsw_ef_search": 80, "ivfflat_probes": 20, "candidate_multiplier": 5, "outcome_window_s": 15.0}`
 
@@ -19,9 +19,9 @@ Target: p95 under 150ms end to end, aggregate under 10ms.
 
 | encoding | queries | p50 ms | p95 ms | p99 ms | encode | search | dedup | aggregate | verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| E0 | 1000 | 9.31 | 19.736 | 28.399 | 0.566 | 16.682 | 0.262 | 3.286 | PASS |
-| E1 | 1000 | 1.655 | 2.981 | 3.942 | 0.32 | 1.394 | 0.169 | 1.285 | PASS |
-| E2 | 1000 | 1.332 | 2.125 | 2.737 | 0.197 | 0.82 | 0.087 | 0.981 | PASS |
+| E0 | 1000 | 11.454 | 19.716 | 26.517 | 0.546 | 16.835 | 0.257 | 3.218 | PASS |
+| E1 | 1000 | 1.892 | 3.818 | 4.978 | 0.346 | 1.83 | 0.231 | 1.642 | PASS |
+| E2 | 1000 | 1.38 | 2.405 | 3.209 | 0.278 | 0.924 | 0.113 | 1.209 | PASS |
 
 ## Recall against exact search
 

@@ -1,0 +1,184 @@
+{
+  "generated_at": "2026-09-28T17:57:18+00:00",
+  "commit": "931c021",
+  "hardware": {
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "python": "3.12.3"
+  },
+  "settings": {
+    "store": "postgres",
+    "index_kind": "hnsw",
+    "hnsw_ef_search": 80,
+    "ivfflat_probes": 20,
+    "candidate_multiplier": 5,
+    "outcome_window_s": 15.0
+  },
+  "dataset": {
+    "matches": 4,
+    "events": 8066,
+    "frames": 5018,
+    "vectors": 0,
+    "outcomes": 5018,
+    "possessions": 1543
+  },
+  "latency": [
+    {
+      "encoding": "E0",
+      "queries": 1000,
+      "p50_ms": 6.755,
+      "p95_ms": 9.406,
+      "p99_ms": 12.119,
+      "mean_ms": 7.043,
+      "stage_p95_ms": {
+        "encode": 0.352,
+        "search": 2.983,
+        "dedup": 1.343,
+        "aggregate": 5.875
+      }
+    },
+    {
+      "encoding": "E1",
+      "queries": 1000,
+      "p50_ms": 6.523,
+      "p95_ms": 8.933,
+      "p99_ms": 12.547,
+      "mean_ms": 6.785,
+      "stage_p95_ms": {
+        "encode": 0.346,
+        "search": 2.748,
+        "dedup": 1.329,
+        "aggregate": 5.461
+      }
+    },
+    {
+      "encoding": "E2",
+      "queries": 1000,
+      "p50_ms": 8.88,
+      "p95_ms": 11.5,
+      "p99_ms": 14.274,
+      "mean_ms": 9.169,
+      "stage_p95_ms": {
+        "encode": 0.364,
+        "search": 4.765,
+        "dedup": 2.33,
+        "aggregate": 5.371
+      }
+    }
+  ],
+  "recall": [
+    {
+      "encoding": "E0",
+      "k": 10,
+      "filtered": false,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E0",
+      "k": 50,
+      "filtered": false,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E0",
+      "k": 10,
+      "filtered": true,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E1",
+      "k": 10,
+      "filtered": false,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E1",
+      "k": 50,
+      "filtered": false,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E1",
+      "k": 10,
+      "filtered": true,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E2",
+      "k": 10,
+      "filtered": false,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E2",
+      "k": 50,
+      "filtered": false,
+      "recall": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E2",
+      "k": 10,
+      "filtered": true,
+      "recall": 1.0,
+      "queries": 200
+    }
+  ],
+  "jitter": [
+    {
+      "encoding": "E0",
+      "original_in_top1": 1.0,
+      "original_in_top5": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E1",
+      "original_in_top1": 1.0,
+      "original_in_top5": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E2",
+      "original_in_top1": 0.505,
+      "original_in_top5": 0.785,
+      "queries": 200
+    }
+  ],
+  "index": [
+    {
+      "encoding": "E0",
+      "dim": 292,
+      "metric": "cosine",
+      "kind": "hnsw",
+      "encoding_version": "E0-v1",
+      "vectors": 5018,
+      "bytes": 22282240
+    },
+    {
+      "encoding": "E1",
+      "dim": 72,
+      "metric": "cosine",
+      "kind": "hnsw",
+      "encoding_version": "E1-v1",
+      "vectors": 5018,
+      "bytes": 6922240
+    },
+    {
+      "encoding": "E2",
+      "dim": 18,
+      "metric": "l2",
+      "kind": "hnsw",
+      "encoding_version": "E2-v1",
+      "vectors": 5018,
+      "bytes": 3596288
+    }
+  ],
+  "quality": []
+}

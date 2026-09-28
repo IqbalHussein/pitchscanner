@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-28T17:17:31+00:00",
-  "commit": "a475a4e",
+  "generated_at": "2026-09-28T17:56:39+00:00",
+  "commit": "931c021",
   "hardware": {
     "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "processor": "x86_64",
@@ -26,43 +26,43 @@
     {
       "encoding": "E0",
       "queries": 1000,
-      "p50_ms": 9.31,
-      "p95_ms": 19.736,
-      "p99_ms": 28.399,
-      "mean_ms": 10.698,
+      "p50_ms": 11.454,
+      "p95_ms": 19.716,
+      "p99_ms": 26.517,
+      "mean_ms": 12.379,
       "stage_p95_ms": {
-        "encode": 0.566,
-        "search": 16.682,
-        "dedup": 0.262,
-        "aggregate": 3.286
+        "encode": 0.546,
+        "search": 16.835,
+        "dedup": 0.257,
+        "aggregate": 3.218
       }
     },
     {
       "encoding": "E1",
       "queries": 1000,
-      "p50_ms": 1.655,
-      "p95_ms": 2.981,
-      "p99_ms": 3.942,
-      "mean_ms": 1.879,
+      "p50_ms": 1.892,
+      "p95_ms": 3.818,
+      "p99_ms": 4.978,
+      "mean_ms": 2.205,
       "stage_p95_ms": {
-        "encode": 0.32,
-        "search": 1.394,
-        "dedup": 0.169,
-        "aggregate": 1.285
+        "encode": 0.346,
+        "search": 1.83,
+        "dedup": 0.231,
+        "aggregate": 1.642
       }
     },
     {
       "encoding": "E2",
       "queries": 1000,
-      "p50_ms": 1.332,
-      "p95_ms": 2.125,
-      "p99_ms": 2.737,
-      "mean_ms": 1.437,
+      "p50_ms": 1.38,
+      "p95_ms": 2.405,
+      "p99_ms": 3.209,
+      "mean_ms": 1.551,
       "stage_p95_ms": {
-        "encode": 0.197,
-        "search": 0.82,
-        "dedup": 0.087,
-        "aggregate": 0.981
+        "encode": 0.278,
+        "search": 0.924,
+        "dedup": 0.113,
+        "aggregate": 1.209
       }
     }
   ],

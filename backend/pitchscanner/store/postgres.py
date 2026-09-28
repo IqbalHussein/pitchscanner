@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 import psycopg
-from psycopg import sql
+from psycopg import Cursor, sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
@@ -57,6 +57,18 @@ def _table(encoding_version: str) -> sql.Identifier:
 
 def _literal(vector: np.ndarray) -> str:
     return "[" + ",".join(f"{float(v):.6g}" for v in np.asarray(vector).ravel()) + "]"
+
+
+def _set_local(cur: Cursor[Any], name: str, value: object) -> None:
+    """Set a GUC for the current transaction.
+
+    ``SET LOCAL x = %s`` does not work: SET takes no parameters, so the driver's
+    placeholder reaches the server verbatim ("syntax error at or near $1").
+    ``set_config`` is a function, so it does take one - which keeps the value
+    parameterised instead of interpolated into SQL.
+    """
+
+    cur.execute("SELECT set_config(%s, %s, true)", (name, str(value)))
 
 
 class PostgresStore:
@@ -410,6 +422,20 @@ class PostgresStore:
             for r in rows
         }
 
+    def matches_by_id(self, match_ids: Sequence[int]) -> dict[int, MatchRecord]:
+        if not match_ids:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM matches WHERE match_id = ANY(%s)", (list(match_ids),))
+            return {int(r["match_id"]): MatchRecord(**r) for r in cur.fetchall()}
+
+    def frames_by_id(self, event_ids: Sequence[str]) -> dict[str, FrameRecord]:
+        if not event_ids:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM frames WHERE event_id = ANY(%s)", (list(event_ids),))
+            return {str(r["event_id"]): _frame_from_row(r) for r in cur.fetchall()}
+
     def frames(self, limit: int | None = None) -> list[FrameRecord]:
         q = "SELECT * FROM frames ORDER BY match_id, possession_id"
         if limit:
@@ -534,12 +560,12 @@ class PostgresStore:
         )
         with self.conn.cursor() as cur:
             if exact:
-                # Turning the scan off is what makes this the ground truth.
-                cur.execute("SET LOCAL enable_indexscan = off")
-                cur.execute("SET LOCAL enable_bitmapscan = off")
+                # Turning the scans off is what makes this the ground truth.
+                _set_local(cur, "enable_indexscan", "off")
+                _set_local(cur, "enable_bitmapscan", "off")
             else:
-                cur.execute("SET LOCAL hnsw.ef_search = %s", (self.ef_search,))
-                cur.execute("SET LOCAL ivfflat.probes = %s", (self.probes,))
+                _set_local(cur, "hnsw.ef_search", self.ef_search)
+                _set_local(cur, "ivfflat.probes", self.probes)
             cur.execute(query, params)
             return [Candidate(str(r["event_id"]), float(r["distance"])) for r in cur.fetchall()]
 

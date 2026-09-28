@@ -1,0 +1,131 @@
+# The slow tier. Everything here is too expensive to put in front of a pull
+# request but too useful to skip: a deep property-test budget, the full 1000-query
+# benchmark against a real pgvector index, and an ingest of the actual StatsBomb
+# data at the pinned commit — the only job that notices if upstream changes shape.
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  deep-properties:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend[dev]"
+      - name: Property tests, nightly Hypothesis budget
+        working-directory: backend
+        env:
+          HYPOTHESIS_PROFILE: nightly
+          PITCHSCANNER_SEARCH_EXAMPLES: '50'
+        run: python -m pytest tests/property -q
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: hypothesis-examples
+          path: backend/.hypothesis
+
+  full-benchmark:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: pitchscanner
+          POSTGRES_PASSWORD: pitchscanner
+          POSTGRES_DB: pitchscanner
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pitchscanner -d pitchscanner"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PITCHSCANNER_STORE: postgres
+      PITCHSCANNER_DSN: postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner
+      PYTHONPATH: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend[dev]"
+      - name: Ingest into Postgres
+        run: python -m pitchscanner.cli --store postgres ingest --fixtures
+      - name: Full benchmark, including ANN recall against exact search
+        # The recall target only means anything here: this is the one job with a
+        # real HNSW index to be approximate about.
+        run: python -m pitchscanner.cli --store postgres bench --out bench/nightly
+      - name: Recall gate
+        run: python scripts/check_recall.py --report bench/nightly/benchmark.json --min 0.95
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-nightly
+          path: bench/nightly
+
+  real-data-ingest:
+    # Fetches the actual open-data repository at the pinned commit. This is the
+    # canary for upstream format drift; the fixtures cannot catch it.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: pitchscanner
+          POSTGRES_PASSWORD: pitchscanner
+          POSTGRES_DB: pitchscanner
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pitchscanner -d pitchscanner"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PITCHSCANNER_STORE: postgres
+      PITCHSCANNER_DSN: postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner
+      PYTHONPATH: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend[dev]"
+      - name: Ingest a slice of the real dataset
+        run: python -m pitchscanner.cli --store postgres ingest --limit 5
+      - name: Search returns results on real data
+        run: |
+          python - <<'PY'
+          from pitchscanner.config import get_settings
+          from pitchscanner.models import PointIn, SearchRequest
+          from pitchscanner.search import SearchService
+          from pitchscanner.store.postgres import PostgresStore
+
+          settings = get_settings()
+          store = PostgresStore(
+              settings.dsn,
+              ef_search=settings.hnsw_ef_search,
+              probes=settings.ivfflat_probes,
+          )
+          counts = store.counts()
+          assert counts.frames > 0, "no frames ingested from the real dataset"
+          service = SearchService(store, settings=settings)
+          response = service.search(
+              SearchRequest(ball=PointIn(x=90.0, y=40.0), players=[], k=10)
+          )
+          assert response.results, "real data ingested but search returned nothing"
+          print(f"{counts.frames} frames, {len(response.results)} results")
+          PY

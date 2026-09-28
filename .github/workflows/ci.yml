@@ -117,6 +117,9 @@ jobs:
     env:
       PITCHSCANNER_STORE: postgres
       PITCHSCANNER_DSN: postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner
+      # The integration tier skips unless this one is set; without it the job is
+      # green and tests nothing.
+      PITCHSCANNER_TEST_DSN: postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -136,7 +139,8 @@ jobs:
           PYTHONPATH: backend
       - name: pytest (integration)
         working-directory: backend
-        run: python -m pytest tests/integration -q -m integration
+        # -ra so a skip is visible in the log rather than passing for free.
+        run: python -m pytest tests/integration -q -m integration -ra
       - name: Recall of the real index against exact search
         # ANN recall only means something against pgvector's index, so the
         # recall gate lives here rather than in the memory-store benchmark.

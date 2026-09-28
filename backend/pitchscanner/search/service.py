@@ -197,14 +197,22 @@ class SearchService:
         event_ids = [c.event_id for c in candidates]
         metas = self.store.metas(event_ids)
         outcomes = self.store.outcomes(event_ids)
+        # Four batched reads, not four per result. Fetching the match and the
+        # frame inside the loop cost one round trip each per hit, which on
+        # Postgres put this stage at ~27ms p95 against a 10ms budget while the
+        # search itself took 3ms.
+        matches = self.store.matches_by_id(
+            sorted({m.match_id for m in metas.values()})
+        )
+        frames = self.store.frames_by_id(event_ids)
 
         results: list[SearchResult] = []
         for c in candidates:
             meta = metas.get(c.event_id)
             if meta is None:
                 continue
-            match = self.store.match(meta.match_id)
-            frame = self.store.frame(c.event_id)
+            match = matches.get(meta.match_id)
+            frame = frames.get(c.event_id)
             if match is None:
                 continue
             o = outcomes.get(c.event_id)

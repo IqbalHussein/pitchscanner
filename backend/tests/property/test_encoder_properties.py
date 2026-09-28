@@ -6,18 +6,28 @@ encoding cannot quietly break the contract search depends on.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from pitchscanner.encoders import available, get_encoder
-from pitchscanner.geometry import PITCH_WIDTH, Situation, mirror, orient_left_to_right
+from pitchscanner.encoders.e1_polar import RING_EDGES
+from pitchscanner.geometry import (
+    PITCH_WIDTH,
+    PlayerPos,
+    Situation,
+    mirror,
+    orient_left_to_right,
+    point_in_polygon,
+)
 from tests.property.strategies import situations
 
-SLOW = settings(
-    max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow]
-)
+#: No max_examples here on purpose: the active profile decides how hard the
+#: property tests try. See tests/conftest.py.
+SLOW = settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 ENCODINGS = available()
 
 
@@ -93,19 +103,59 @@ SPATIAL_ENCODINGS = tuple(e for e in ENCODINGS if e != "E2")
 E2_Y_FEATURES = ("ball_y", "ball_angle_to_goal")
 
 
+def _contributing(situation: Situation, encoding: str) -> list[PlayerPos]:
+    """The players that can actually reach this encoding's vector.
+
+    Two horizons, and a mirroring property that ignores either is vacuously
+    falsifiable - the nightly Hypothesis profile found both:
+
+    * every encoding multiplies occupancy by the camera mask, so players outside
+      ``visible_area`` contribute nothing;
+    * E1 is ball-relative with a finite outermost ring, so players further from
+      the ball than ``RING_EDGES[-1]`` fall outside every bin.
+    """
+
+    players = list(situation.players)
+    if situation.visible_area is not None:
+        players = [
+            p for p in players if point_in_polygon(p.x, p.y, situation.visible_area)
+        ]
+    if encoding == "E1":
+        horizon = RING_EDGES[-1]
+        players = [
+            p
+            for p in players
+            if math.hypot(p.x - situation.ball.x, p.y - situation.ball.y) <= horizon
+        ]
+    return players
+
+
+def _is_its_own_mirror(situation: Situation, encoding: str) -> bool:
+    """True when mirroring cannot change this encoding's vector, so the test is
+    vacuous: the ball is on the halfway axis and the contributing players are
+    symmetric about it."""
+
+    if abs(situation.ball.y - PITCH_WIDTH / 2) > 1e-6:
+        return False
+    players = _contributing(situation, encoding)
+    key = [(round(p.x, 6), round(p.y, 6), p.teammate, p.keeper) for p in players]
+    flipped = [
+        (round(p.x, 6), round(PITCH_WIDTH - p.y, 6), p.teammate, p.keeper)
+        for p in players
+    ]
+    return sorted(key) == sorted(flipped)
+
+
 @pytest.mark.parametrize("encoding", SPATIAL_ENCODINGS)
 @SLOW
 @given(situation=situations(min_players=2))
 def test_mirroring_a_situation_changes_the_vector(
     encoding: str, situation: Situation
 ) -> None:
+    if _is_its_own_mirror(situation, encoding):
+        return
     encoder = get_encoder(encoding)
     mirrored = mirror(situation)
-    on_centre_line = all(
-        abs(p.y - PITCH_WIDTH / 2) < 1e-6 for p in situation.players
-    ) and abs(situation.ball.y - PITCH_WIDTH / 2) < 1e-6
-    if on_centre_line:
-        return  # a perfectly central situation is its own mirror
     assert not np.allclose(encoder.encode(situation), encoder.encode(mirrored), atol=1e-7)
 
 

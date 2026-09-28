@@ -120,13 +120,21 @@ Two details that matter more than the bin counts:
 
 ## Benchmarks
 
-Numbers below are copied from [`bench/reports/benchmark.md`](bench/reports/benchmark.md),
-which `make bench` regenerates; the tables here are a snapshot of that file at
-commit `a475a4e`, and nothing is quoted anywhere in this repo that is not in it.
-This run is the **fixture** dataset on the in-memory store, on a WSL2 laptop, so
-treat the absolute milliseconds as a shape rather than a spec — repeat runs on
-the same machine vary by around 1.5x, which is why the CI regression gate allows
-2.5x.
+Two committed reports, because they answer different questions:
+
+- [`bench/reports/postgres/benchmark.md`](bench/reports/postgres/benchmark.md) —
+  Postgres + pgvector with an HNSW index. **This is the one to read**: it is the
+  production configuration, and the only place ANN recall means anything.
+- [`bench/reports/benchmark.md`](bench/reports/benchmark.md) — the same harness
+  against the in-memory store, which is the infrastructure-free path and the
+  exact-search reference. Its recall column is 1.0 by definition and the report
+  says so.
+
+`make bench` regenerates whichever one the current `PITCHSCANNER_STORE` points at.
+Nothing is quoted anywhere in this repo that is not in one of those files. Both
+runs below are the **fixture** dataset (4 synthetic matches, 5,018 frames) on a
+WSL2 laptop; repeat runs on the same machine vary by around 1.5x, which is why the
+CI regression gate allows 2.5x.
 
 Dataset:
 
@@ -134,16 +142,32 @@ Dataset:
 | --- | --- | --- | --- | --- |
 | 4 | 8066 | 5018 | 1543 | 5018 |
 
-Query latency, 1000 queries per encoding, p95 in milliseconds, stage columns are
-p95 for that stage:
+Query latency on Postgres + pgvector/HNSW, 1000 queries per encoding,
+milliseconds, stage columns are p95 for that stage:
 
 | encoding | p50 | p95 | p99 | encode | search | dedup | aggregate | target |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| E0 | 9.3 | 19.7 | 28.4 | 0.57 | 16.7 | 0.26 | 3.3 | PASS |
-| E1 | 1.7 | 3.0 | 3.9 | 0.32 | 1.4 | 0.17 | 1.3 | PASS |
-| E2 | 1.3 | 2.1 | 2.7 | 0.20 | 0.8 | 0.09 | 1.0 | PASS |
+| E0 | 6.8 | 9.4 | 12.1 | 0.35 | 3.0 | 1.3 | 5.9 | PASS |
+| E1 | 6.5 | 8.9 | 12.5 | 0.35 | 2.7 | 1.3 | 5.5 | PASS |
+| E2 | 8.9 | 11.5 | 14.3 | 0.36 | 4.8 | 2.3 | 5.4 | PASS |
 
 Targets: end-to-end p95 under 150ms, aggregation under 10ms, encoding under 1ms.
+The aggregate column is the one worth watching — the first Postgres run had it at
+30ms p95 because `_assemble` fetched the match and the frame inside its per-result
+loop. See [`docs/design-notes.md`](docs/design-notes.md) §10.
+
+**ANN recall against exact search**, 200 queries per configuration,
+`ef_search=80`:
+
+| encoding | k=10 | k=50 | k=10 filtered | target |
+| --- | --- | --- | --- | --- |
+| E0 | 1.000 | 1.000 | 1.000 | ≥ 0.95 |
+| E1 | 1.000 | 1.000 | 1.000 | ≥ 0.95 |
+| E2 | 1.000 | 1.000 | 1.000 | ≥ 0.95 |
+
+Read that as "the index is losing nothing at this corpus size" rather than as a
+claim about HNSW in general: 5,018 vectors is few enough that the graph walk is
+close to exhaustive. The nightly job re-measures it and fails below 0.95.
 
 Jitter sanity check — every player nudged 1–2m, the original frame should still
 come back first:
@@ -151,26 +175,19 @@ come back first:
 | encoding | original ranked first | original in top 5 |
 | --- | --- | --- |
 | E0 | 1.000 | 1.000 |
-| E1 | 0.995 | 1.000 |
-| E2 | 0.505 | 0.790 |
+| E1 | 1.000 | 1.000 |
+| E2 | 0.505 | 0.785 |
 
 That E2 row is the honest cost of an 18-dimensional summary, and it is the
 reason E2 is offered as a lens rather than the default.
 
-Index size (fixture dataset, 5018 frames):
+Index size (fixture dataset, 5018 vectors, HNSW):
 
-| encoding | dim | metric | bytes |
+| encoding | dim | metric | index bytes |
 | --- | --- | --- | --- |
-| E0 | 292 | cosine | 5.9 MB |
-| E1 | 72 | cosine | 1.4 MB |
-| E2 | 18 | L2 | 0.36 MB |
-
-**ANN recall.** The committed report's recall table was produced against the
-in-memory store, which is exact by construction — those 1.0s are definitional
-and are marked as such in the report. Recall only means something against
-pgvector with an HNSW index, which is why the CI `integration` job re-runs the
-recall benchmark against a real Postgres service container and the report's own
-caveat tells you not to quote a memory run.
+| E0 | 292 | cosine | 22.3 MB |
+| E1 | 72 | cosine | 6.9 MB |
+| E2 | 18 | L2 | 3.6 MB |
 
 **Natural-language filters.** 145 hand-labelled phrases in
 [`data/eval/filter-phrases.jsonl`](data/eval/filter-phrases.jsonl); the rule
@@ -180,13 +197,16 @@ The LLM fallback is off by default and is only consulted for phrases the rules
 leave unresolved.
 
 **Retrieval quality.** `make eval-pool` builds a 200-query blind pool for hand
-labelling. Until `bench/reports/eval-labels.jsonl` exists there are no precision
-numbers here, and the report refuses to invent any.
+labelling. Until `bench/reports/eval-labels.jsonl` exists there are no
+precision@10 or nDCG@10 numbers here, and the report refuses to invent any. The
+metrics themselves are unit-tested against hand-computed values, including that
+nDCG's ideal ranking comes from the whole pool rather than from the run being
+scored.
 
-**Tests.** 119 backend tests (unit, property-based, golden snapshots) plus 24
-Playwright tests across desktop and mobile viewports; 98% statement coverage on
-the core packages (encoders, labeller, stats, geometry, filters) against an 85%
-gate. Integration tests need Postgres and skip without a DSN.
+**Tests.** 129 fast tests (unit, property-based, golden snapshots) plus 16
+integration tests against a real Postgres with pgvector, plus 24 Playwright tests
+across desktop and mobile viewports; 98% statement coverage on the core packages
+(encoders, labeller, stats, geometry, filters) against an 85% gate.
 
 ## Observability
 
@@ -271,6 +291,7 @@ Read these before quoting anything from the demo.
 make help              # every target, with one-line descriptions
 make test              # unit, property, golden, API
 make test-integration  # needs Postgres + pgvector
+make test-slow         # the nightly tier: deep property-test budget
 make test-e2e          # builds the frontend, runs Playwright
 make lint typecheck    # ruff + eslint, mypy (strict on core) + tsc
 make bench             # rewrite bench/reports/
@@ -283,6 +304,15 @@ in cheapest-first order: lint and type-check, then the fast test tiers with the
 coverage gate, then integration against a Postgres + pgvector service container,
 then Docker image builds with Playwright against them, then the p95 regression
 gate, and on merge to `main` it publishes images and deploys.
+
+The slow tier runs nightly ([`.github/workflows/nightly.yml`](.github/workflows/nightly.yml)):
+the property tests at a much larger Hypothesis budget, the full 1000-query
+benchmark against a real pgvector index with a recall gate at 0.95, and an ingest
+of the actual StatsBomb data at the pinned commit — the only job that notices if
+upstream changes shape. The deep budget earns its place: it falsified the
+mirroring property twice in ways the pull-request budget never reached, both
+times by finding situations whose asymmetry lay entirely outside what the encoder
+can see — the camera polygon for E0, the outermost ring for E1.
 
 The frontend's TypeScript types are generated from the API's own OpenAPI schema,
 and `frontend/src/lib/contract.ts` asserts at compile time that the hand-written

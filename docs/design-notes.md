@@ -182,9 +182,11 @@ rule result. Model: `claude-opus-5`.
 
 It is not a mock. It is (a) the exact-search ground truth that ANN recall is
 measured against, (b) the reason the whole demo runs with no Docker and no
-Postgres, and (c) a second implementation that the property tests compare against
-Postgres, which is how divergence in filter semantics or distance metrics gets
-caught. The cost is one extra implementation of the `Store` protocol; the benefit
+Postgres, and (c) a second implementation that the integration tier compares against
+Postgres frame by frame - `test_filter_semantics_match_the_memory_store` over
+nine filter shapes and `test_exact_search_agrees_with_the_memory_store` over
+ranking and distances - which is how divergence in filter semantics or distance
+metrics gets caught. The cost is one extra implementation of the `Store` protocol; the benefit
 is that "is the ANN index actually returning the right answers?" is a question
 with a committed numeric answer.
 
@@ -207,3 +209,37 @@ something real:
   and `name` independently, producing frames whose player identities did not
   match. That made surnames ambiguous and dropped filter accuracy to 0.903; with
   one draw per defender it is 1.000.
+- **The integration tier found that it was not running.** Its `pg_dsn` fixture
+  used `return dsn` when a DSN was supplied, and `return` inside a generator
+  fixture ends it without producing a value — so the tier was green and tested
+  nothing in exactly the configuration it exists for. Two real Postgres bugs were
+  waiting behind it: `SET LOCAL hnsw.ef_search = %s` (SET takes no parameters, so
+  the placeholder reached the server as `$1`), and the N+1 in section 10.
+
+A lesson in there worth stating plainly: a passing test tier is not evidence
+until you have watched it fail. Both of those bugs would have shipped.
+
+## 10. What only the real backend tells you
+
+The in-memory store made every stage measurable early, and it hid two things that
+only appeared the first time the benchmark ran against Postgres.
+
+**Recall was untested, not good.** Against an exact store, recall is 1.0 by
+definition. Measured properly — pgvector, HNSW, `ef_search=80`, 200 queries per
+configuration — it is also 1.0 at k=10 and k=50, filtered and unfiltered. That is
+a real result and a small one: 5,018 vectors is few enough that HNSW's graph walk
+is nearly exhaustive, so the honest reading is "the index is not losing anything
+at this corpus size", not "HNSW recall is solved". The recall gate lives in the
+nightly job because that is the only place with an index to be approximate about.
+
+**Aggregation was an N+1.** The first Postgres run put the aggregate stage at
+22–30ms p95 against a 10ms budget, while search itself took 3ms. `_assemble`
+called `store.match()` and `store.frame()` inside the per-result loop: two round
+trips per hit, twenty per query, and about 27ms of latency that no amount of
+index tuning would have fixed. Batched into two keyed reads, the stage drops to
+5.5ms p95 and the end-to-end p95 goes from 34.6ms to 8.9ms on E1 (the committed
+report: `bench/reports/postgres/benchmark.md`).
+
+The in-memory store could never have shown this - a dict lookup in a loop is
+free, which is exactly why the second implementation has to be the slow one when
+it matters.

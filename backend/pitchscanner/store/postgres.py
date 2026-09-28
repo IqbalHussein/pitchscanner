@@ -352,10 +352,39 @@ class PostgresStore:
             matches=int(row.get("matches", 0)),
             events=int(row.get("events", 0)),
             frames=int(row.get("frames", 0)),
-            vectors=0,
+            vectors=self._vector_count(),
             outcomes=int(row.get("outcomes", 0)),
             possessions=int(row.get("possessions", 0)),
         )
+
+    def _vector_count(self) -> int:
+        """Rows across every per-encoding vector table.
+
+        Vectors live in one table per encoding, so there is nothing to count
+        without first finding the tables. This used to return a hardcoded 0,
+        which `/readyz` and `/v1/meta` then reported as fact while the index was
+        perfectly healthy.
+        """
+
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name LIKE 'frame\\_vectors\\_%'
+                ORDER BY table_name
+                """
+            )
+            tables = [str(r["table_name"]) for r in cur.fetchall()]
+            if not tables:
+                return 0
+            query = sql.SQL(" UNION ALL ").join(
+                sql.SQL("SELECT count(*) AS n FROM {}").format(sql.Identifier(name))
+                for name in tables
+            )
+            cur.execute(sql.SQL("SELECT sum(n)::bigint AS total FROM ({}) t").format(query))
+            row = cur.fetchone() or {}
+        return int(row.get("total") or 0)
 
     def match(self, match_id: int) -> MatchRecord | None:
         with self.conn.cursor() as cur:

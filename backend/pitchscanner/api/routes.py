@@ -228,10 +228,13 @@ def readyz(response: Response, state: AppState = Depends(get_state)) -> dict[str
         response.status_code = 503
         metrics.ERRORS.labels(kind="readiness").inc()
         return {"status": "unavailable", "error": str(exc)}
-    ready = counts.frames > 0
+    # Frames without vectors is a half-loaded database: the API answers, and every
+    # search comes back empty. Readiness has to mean searchable, not populated.
+    ready = counts.frames > 0 and counts.vectors > 0
     if not ready:
         response.status_code = 503
-    return {"status": "ready" if ready else "empty", "counts": counts.as_dict()}
+    status = "ready" if ready else ("no-vectors" if counts.frames else "empty")
+    return {"status": status, "counts": counts.as_dict()}
 
 
 @router.get("/metrics", summary="Prometheus metrics")

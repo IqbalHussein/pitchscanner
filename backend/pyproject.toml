@@ -36,6 +36,8 @@ dev = [
     "mypy>=1.10",
 ]
 llm = ["anthropic>=0.34"]
+#: The benchmarked alternative to pgvector; see bench/faiss_compare.py.
+faiss = ["faiss-cpu>=1.8"]
 
 [project.scripts]
 pitchscanner = "pitchscanner.cli:main"

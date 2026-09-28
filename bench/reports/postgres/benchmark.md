@@ -1,7 +1,7 @@
 # Benchmark report
 
-- Generated: `2026-09-28T17:57:18+00:00`
-- Commit: `931c021`
+- Generated: `2026-09-28T18:08:35+00:00`
+- Commit: `5aec1dc`
 - Hardware: `Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39` / Python `3.12.3`
 - Settings: `{"store": "postgres", "index_kind": "hnsw", "hnsw_ef_search": 80, "ivfflat_probes": 20, "candidate_multiplier": 5, "outcome_window_s": 15.0}`
 
@@ -19,9 +19,9 @@ Target: p95 under 150ms end to end, aggregate under 10ms.
 
 | encoding | queries | p50 ms | p95 ms | p99 ms | encode | search | dedup | aggregate | verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| E0 | 1000 | 6.755 | 9.406 | 12.119 | 0.352 | 2.983 | 1.343 | 5.875 | PASS |
-| E1 | 1000 | 6.523 | 8.933 | 12.547 | 0.346 | 2.748 | 1.329 | 5.461 | PASS |
-| E2 | 1000 | 8.88 | 11.5 | 14.274 | 0.364 | 4.765 | 2.33 | 5.371 | PASS |
+| E0 | 1000 | 8.123 | 11.256 | 15.16 | 0.395 | 3.583 | 1.683 | 6.931 | PASS |
+| E1 | 1000 | 7.974 | 11.947 | 14.612 | 0.381 | 3.526 | 1.602 | 7.083 | PASS |
+| E2 | 1000 | 9.648 | 13.291 | 17.309 | 0.393 | 5.388 | 2.713 | 6.283 | PASS |
 
 ## Recall against exact search
 
@@ -56,8 +56,18 @@ Every player nudged 1-2m; the original frame should still rank first.
 | encoding | dim | metric | kind | vectors | bytes |
 | --- | --- | --- | --- | --- | --- |
 | E0 | 292 | cosine | hnsw | 5018 | 22282240 |
-| E1 | 72 | cosine | hnsw | 5018 | 6922240 |
-| E2 | 18 | l2 | hnsw | 5018 | 3596288 |
+| E1 | 72 | cosine | hnsw | 5018 | 6930432 |
+| E2 | 18 | l2 | hnsw | 5018 | 3588096 |
+
+## FAISS, for comparison
+
+Same HNSW parameters, in process, no filters and no network hop. This is the evidence for choosing pgvector, not an argument against FAISS: the search itself is faster, and the cost is a second process owning an in-memory index that knows nothing about the filter columns every query uses. Search time only - no encode, dedup or aggregation.
+
+| encoding | vectors | build ms | search p50 ms | search p95 ms | recall@10 |
+| --- | --- | --- | --- | --- | --- |
+| E0 | 5018 | 678.7 | 0.1022 | 0.2941 | 1.0 |
+| E1 | 5018 | 588.0 | 0.106 | 0.2163 | 0.998 |
+| E2 | 5018 | 532.2 | 0.0856 | 0.1685 | 1.0 |
 
 ## Retrieval quality (blind, hand-labelled)
 

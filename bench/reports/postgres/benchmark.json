@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-28T17:57:18+00:00",
-  "commit": "931c021",
+  "generated_at": "2026-09-28T18:08:35+00:00",
+  "commit": "5aec1dc",
   "hardware": {
     "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "processor": "x86_64",
@@ -26,43 +26,43 @@
     {
       "encoding": "E0",
       "queries": 1000,
-      "p50_ms": 6.755,
-      "p95_ms": 9.406,
-      "p99_ms": 12.119,
-      "mean_ms": 7.043,
+      "p50_ms": 8.123,
+      "p95_ms": 11.256,
+      "p99_ms": 15.16,
+      "mean_ms": 8.422,
       "stage_p95_ms": {
-        "encode": 0.352,
-        "search": 2.983,
-        "dedup": 1.343,
-        "aggregate": 5.875
+        "encode": 0.395,
+        "search": 3.583,
+        "dedup": 1.683,
+        "aggregate": 6.931
       }
     },
     {
       "encoding": "E1",
       "queries": 1000,
-      "p50_ms": 6.523,
-      "p95_ms": 8.933,
-      "p99_ms": 12.547,
-      "mean_ms": 6.785,
+      "p50_ms": 7.974,
+      "p95_ms": 11.947,
+      "p99_ms": 14.612,
+      "mean_ms": 8.344,
       "stage_p95_ms": {
-        "encode": 0.346,
-        "search": 2.748,
-        "dedup": 1.329,
-        "aggregate": 5.461
+        "encode": 0.381,
+        "search": 3.526,
+        "dedup": 1.602,
+        "aggregate": 7.083
       }
     },
     {
       "encoding": "E2",
       "queries": 1000,
-      "p50_ms": 8.88,
-      "p95_ms": 11.5,
-      "p99_ms": 14.274,
-      "mean_ms": 9.169,
+      "p50_ms": 9.648,
+      "p95_ms": 13.291,
+      "p99_ms": 17.309,
+      "mean_ms": 10.007,
       "stage_p95_ms": {
-        "encode": 0.364,
-        "search": 4.765,
-        "dedup": 2.33,
-        "aggregate": 5.371
+        "encode": 0.393,
+        "search": 5.388,
+        "dedup": 2.713,
+        "aggregate": 6.283
       }
     }
   ],
@@ -168,7 +168,7 @@
       "kind": "hnsw",
       "encoding_version": "E1-v1",
       "vectors": 5018,
-      "bytes": 6922240
+      "bytes": 6930432
     },
     {
       "encoding": "E2",
@@ -177,8 +177,43 @@
       "kind": "hnsw",
       "encoding_version": "E2-v1",
       "vectors": 5018,
-      "bytes": 3596288
+      "bytes": 3588096
     }
   ],
-  "quality": []
+  "quality": [],
+  "faiss": [
+    {
+      "encoding": "E0",
+      "vectors": 5018,
+      "dim": 292,
+      "metric": "inner_product",
+      "build_ms": 678.7,
+      "search_p50_ms": 0.1022,
+      "search_p95_ms": 0.2941,
+      "recall@10": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E1",
+      "vectors": 5018,
+      "dim": 72,
+      "metric": "inner_product",
+      "build_ms": 588.0,
+      "search_p50_ms": 0.106,
+      "search_p95_ms": 0.2163,
+      "recall@10": 0.998,
+      "queries": 200
+    },
+    {
+      "encoding": "E2",
+      "vectors": 5018,
+      "dim": 18,
+      "metric": "l2",
+      "build_ms": 532.2,
+      "search_p50_ms": 0.0856,
+      "search_p95_ms": 0.1685,
+      "recall@10": 1.0,
+      "queries": 200
+    }
+  ]
 }

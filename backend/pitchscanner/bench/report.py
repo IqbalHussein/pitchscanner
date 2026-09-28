@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict
 
+from pitchscanner.bench.faiss_compare import available as faiss_available
+from pitchscanner.bench.faiss_compare import compare as faiss_compare
 from pitchscanner.bench.latency import measure_latency
 from pitchscanner.bench.quality import score_encodings
 from pitchscanner.bench.queries import build_jitter_set, build_query_set
@@ -38,6 +40,7 @@ class BenchmarkPayload(TypedDict):
     jitter: list[dict[str, Any]]
     index: list[dict[str, Any]]
     quality: list[dict[str, Any]]
+    faiss: list[dict[str, Any]]
 
 
 P95_TARGET_MS = 150.0
@@ -104,6 +107,7 @@ def run_all(
         "jitter": [],
         "index": [],
         "quality": [],
+        "faiss": [],
     }
 
     for encoding in encodings:
@@ -136,6 +140,20 @@ def run_all(
                 **store.build_index(encoder.version, cfg.index_kind),
             }
         )
+
+    # The alternative the architecture did not pick. Optional dependency, and the
+    # section says so rather than quietly disappearing.
+    for encoding in encodings:
+        result = faiss_compare(
+            store,
+            recall_set,
+            encoding=encoding,
+            hnsw_m=cfg.hnsw_m,
+            ef_construction=cfg.hnsw_ef_construction,
+            ef_search=cfg.hnsw_ef_search,
+        )
+        if result is not None:
+            payload["faiss"].append(result.as_dict())
 
     payload["quality"] = [
         r.as_dict()
@@ -256,6 +274,35 @@ def render_markdown(payload: BenchmarkPayload) -> str:
         lines.append(
             f"| {row['encoding']} | {row['dim']} | {row['metric']} | {row['kind']} "
             f"| {row['vectors']} | {row['bytes']} |"
+        )
+
+    lines += [
+        "",
+        "## FAISS, for comparison",
+        "",
+        "Same HNSW parameters, in process, no filters and no network hop. This is "
+        "the evidence for choosing pgvector, not an argument against FAISS: the "
+        "search itself is faster, and the cost is a second process owning an "
+        "in-memory index that knows nothing about the filter columns every query "
+        "uses. Search time only - no encode, dedup or aggregation.",
+        "",
+    ]
+    if payload["faiss"]:
+        lines += [
+            "| encoding | vectors | build ms | search p50 ms | search p95 ms | recall@10 |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for row in payload["faiss"]:
+            lines.append(
+                f"| {row['encoding']} | {row['vectors']} | {row['build_ms']} "
+                f"| {row['search_p50_ms']} | {row['search_p95_ms']} | {row['recall@10']} |"
+            )
+    else:
+        lines.append(
+            "faiss is not installed, so there is no comparison in this run. "
+            '`pip install -e "backend[faiss]"` and rerun `make bench`.'
+            if not faiss_available()
+            else "No FAISS results in this run."
         )
 
     quality = payload["quality"]

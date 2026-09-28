@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-28T17:56:39+00:00",
-  "commit": "931c021",
+  "generated_at": "2026-09-28T18:07:43+00:00",
+  "commit": "5aec1dc",
   "hardware": {
     "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "processor": "x86_64",
@@ -26,43 +26,43 @@
     {
       "encoding": "E0",
       "queries": 1000,
-      "p50_ms": 11.454,
-      "p95_ms": 19.716,
-      "p99_ms": 26.517,
-      "mean_ms": 12.379,
+      "p50_ms": 11.046,
+      "p95_ms": 19.154,
+      "p99_ms": 24.932,
+      "mean_ms": 12.243,
       "stage_p95_ms": {
-        "encode": 0.546,
-        "search": 16.835,
-        "dedup": 0.257,
-        "aggregate": 3.218
+        "encode": 0.565,
+        "search": 16.094,
+        "dedup": 0.265,
+        "aggregate": 3.349
       }
     },
     {
       "encoding": "E1",
       "queries": 1000,
-      "p50_ms": 1.892,
-      "p95_ms": 3.818,
-      "p99_ms": 4.978,
-      "mean_ms": 2.205,
+      "p50_ms": 1.606,
+      "p95_ms": 2.867,
+      "p99_ms": 3.689,
+      "mean_ms": 1.814,
       "stage_p95_ms": {
-        "encode": 0.346,
-        "search": 1.83,
-        "dedup": 0.231,
-        "aggregate": 1.642
+        "encode": 0.278,
+        "search": 1.42,
+        "dedup": 0.124,
+        "aggregate": 1.198
       }
     },
     {
       "encoding": "E2",
       "queries": 1000,
       "p50_ms": 1.38,
-      "p95_ms": 2.405,
-      "p99_ms": 3.209,
-      "mean_ms": 1.551,
+      "p95_ms": 2.471,
+      "p99_ms": 3.215,
+      "mean_ms": 1.563,
       "stage_p95_ms": {
-        "encode": 0.278,
-        "search": 0.924,
-        "dedup": 0.113,
-        "aggregate": 1.209
+        "encode": 0.297,
+        "search": 0.957,
+        "dedup": 0.131,
+        "aggregate": 1.238
       }
     }
   ],
@@ -183,5 +183,40 @@
       "requested": "hnsw"
     }
   ],
-  "quality": []
+  "quality": [],
+  "faiss": [
+    {
+      "encoding": "E0",
+      "vectors": 5018,
+      "dim": 292,
+      "metric": "inner_product",
+      "build_ms": 849.4,
+      "search_p50_ms": 0.1953,
+      "search_p95_ms": 0.6133,
+      "recall@10": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E1",
+      "vectors": 5018,
+      "dim": 72,
+      "metric": "inner_product",
+      "build_ms": 644.1,
+      "search_p50_ms": 0.0897,
+      "search_p95_ms": 0.2168,
+      "recall@10": 1.0,
+      "queries": 200
+    },
+    {
+      "encoding": "E2",
+      "vectors": 5018,
+      "dim": 18,
+      "metric": "l2",
+      "build_ms": 459.3,
+      "search_p50_ms": 0.0603,
+      "search_p95_ms": 0.1718,
+      "recall@10": 1.0,
+      "queries": 200
+    }
+  ]
 }

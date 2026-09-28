@@ -12,7 +12,7 @@ FRONTEND := frontend
 export PYTHONPATH := $(BACKEND)
 
 .DEFAULT_GOAL := help
-.PHONY: help venv install fixtures ingest ingest-real ingest-docker serve web \
+.PHONY: help venv install install-faiss fixtures ingest ingest-real ingest-docker serve web \
         up down logs monitoring test test-unit test-property test-golden test-integration \
         test-slow test-e2e bench bench-quick perf-gate eval-pool lint format typecheck openapi \
         migrate clean ci
@@ -29,6 +29,9 @@ install: venv ## Install backend (with dev extras) and frontend dependencies
 	$(BIN)/pip install --upgrade pip wheel
 	$(BIN)/pip install -e "$(BACKEND)[dev]"
 	cd $(FRONTEND) && npm install
+
+install-faiss: ## Add the optional FAISS comparison dependency
+	$(BIN)/pip install -e "$(BACKEND)[faiss]"
 
 # --- data -----------------------------------------------------------------
 fixtures: ## Regenerate the checked-in fixture dataset (deterministic)

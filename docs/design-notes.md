@@ -243,3 +243,31 @@ report: `bench/reports/postgres/benchmark.md`).
 The in-memory store could never have shown this - a dict lookup in a loop is
 free, which is exactly why the second implementation has to be the slow one when
 it matters.
+
+## 11. pgvector or FAISS
+
+Benchmarked rather than argued about (`bench/faiss_compare.py`, optional
+dependency). With the same HNSW parameters over the same vectors, FAISS searches
+the 72-dimensional E1 index at 0.22ms p95 against pgvector's 2.7ms, at the same
+recall - about twelve times faster.
+
+It still loses, for reasons that have nothing to do with speed:
+
+- **Filters.** Every real query carries filters, and they are answered from
+  columns on the frame row. A FAISS index holds vectors and integer ids; the
+  filtered-subset path - count first, scan exactly when the subset is small -
+  simply does not exist, and reimplementing it outside the database means keeping
+  a second copy of the filter columns in sync.
+- **One process, one truth.** pgvector's index lives next to the rows it indexes
+  and is rebuilt by the same batch job in the same transaction. A FAISS index is
+  a separate artefact with a separate lifecycle, which is a second thing to
+  deploy, warm and invalidate.
+- **The budget does not care.** Search is 2.7ms of an 8.9ms end-to-end p95
+  against a 150ms target. Spending an operational component to reclaim 2.5ms is a
+  bad trade, and would stay a bad trade at ten times the corpus.
+
+The number to watch is corpus size. At 5,018 vectors both are effectively exact;
+FAISS's advantage is constant-factor, not asymptotic. If the index grew by two
+orders of magnitude and search came to dominate the budget, this is the first
+decision to revisit - which is why the comparison is in the benchmark harness and
+not in a footnote.

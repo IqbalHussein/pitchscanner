@@ -189,6 +189,24 @@ Index size (fixture dataset, 5018 vectors, HNSW):
 | E1 | 72 | cosine | 6.9 MB |
 | E2 | 18 | L2 | 3.6 MB |
 
+**FAISS, for comparison.** The spec's alternative to pgvector, benchmarked rather
+than dismissed: same HNSW parameters, in process, over the same vectors.
+
+| encoding | build | search p50 | search p95 | recall@10 |
+| --- | --- | --- | --- | --- |
+| E0 | 849ms | 0.20ms | 0.61ms | 1.000 |
+| E1 | 644ms | 0.09ms | 0.22ms | 1.000 |
+| E2 | 459ms | 0.06ms | 0.17ms | 1.000 |
+
+FAISS searches the E1 index about twelve times faster than pgvector does
+(0.22ms vs 2.7ms p95) — and the search stage is only 2.7ms of an 8.9ms
+end-to-end p95, so adopting it would buy roughly 2.5ms inside a 150ms budget. The
+price is a second process owning an in-memory index that knows nothing about the
+filter columns every query uses, plus the job of keeping it in step with the
+database. pgvector stays. `pip install -e "backend[faiss]"` to reproduce the
+table; without it the report says the comparison is missing rather than omitting
+the section.
+
 **Natural-language filters.** 145 hand-labelled phrases in
 [`data/eval/filter-phrases.jsonl`](data/eval/filter-phrases.jsonl); the rule
 parser scores **1.000 exact match** with per-field f1 of 1.000 across all nine

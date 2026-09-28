@@ -1,0 +1,28 @@
+[
+ {
+  "match_id": 3900004,
+  "match_date": "2024-06-17",
+  "competition": {
+   "competition_id": 9,
+   "competition_name": "1. Bundesliga"
+  },
+  "season": {
+   "season_id": 281,
+   "season_name": "2023/2024"
+  },
+  "home_team": {
+   "home_team_id": 904,
+   "home_team_name": "Bayer Leverkusen"
+  },
+  "away_team": {
+   "away_team_id": 169,
+   "away_team_name": "Bayern Munich"
+  },
+  "home_score": 5,
+  "away_score": 7,
+  "competition_stage": {
+   "id": 10,
+   "name": "Regular Season"
+  }
+ }
+]

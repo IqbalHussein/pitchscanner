@@ -1,0 +1,301 @@
+# Six stages, cheapest first: nothing expensive runs until the linters agree.
+#
+#   lint -> tests -> integration (Postgres + pgvector) -> images + e2e -> perf -> deploy
+#
+# `perf` fails the build on a large p95 regression against the committed
+# benchmark report, which is what keeps the numbers in the README honest.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '20'
+  PITCHSCANNER_STORE: memory
+
+jobs:
+  # 1. Lint and type-check, both languages.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend[dev]"
+          npm --prefix frontend ci || npm --prefix frontend install
+      - name: ruff
+        working-directory: backend
+        run: python -m ruff check .
+      - name: mypy
+        working-directory: backend
+        run: python -m mypy pitchscanner
+      - name: OpenAPI schema is up to date
+        # The generated TypeScript types are only trustworthy if the committed
+        # schema matches the running app.
+        run: |
+          python -m pitchscanner.cli --store memory openapi --out /tmp/openapi.json
+          diff -u frontend/openapi.json /tmp/openapi.json
+        env:
+          PYTHONPATH: backend
+      - name: eslint + tsc
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm run gen:api
+          npm run typecheck
+
+  # 2. Unit, property and golden tests, with the coverage gate on core packages.
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend[dev]"
+      - name: Fixtures are deterministic
+        # The whole test suite rests on the checked-in fixtures; if regenerating
+        # them produces a diff, something non-deterministic crept in.
+        run: |
+          python scripts/make_fixture.py
+          python scripts/make_filter_phrases.py
+          git diff --exit-code -- data/
+        env:
+          PYTHONPATH: backend
+      - name: pytest (unit, property, golden, api)
+        working-directory: backend
+        run: |
+          python -m pytest tests -q -m "not integration" \
+            --cov=pitchscanner --cov-report=term-missing:skip-covered \
+            --cov-report=xml --cov-fail-under=85
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: backend/coverage.xml
+
+  # 3. The pipeline and the API against a real Postgres with pgvector. The DSN
+  #    is exported so the integration tests use the service container instead of
+  #    starting a Testcontainer (no docker-in-docker needed here).
+  integration:
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: pitchscanner
+          POSTGRES_PASSWORD: pitchscanner
+          POSTGRES_DB: pitchscanner
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pitchscanner -d pitchscanner"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PITCHSCANNER_STORE: postgres
+      PITCHSCANNER_DSN: postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend[dev]"
+      - name: Migrations apply cleanly
+        working-directory: backend
+        run: alembic upgrade head
+      - name: Ingest the fixtures into Postgres
+        run: python -m pitchscanner.cli --store postgres ingest --fixtures
+        env:
+          PYTHONPATH: backend
+      - name: pytest (integration)
+        working-directory: backend
+        run: python -m pytest tests/integration -q -m integration
+      - name: Recall of the real index against exact search
+        # ANN recall only means something against pgvector's index, so the
+        # recall gate lives here rather than in the memory-store benchmark.
+        run: python -m pitchscanner.cli --store postgres bench --quick --out bench/ci
+        env:
+          PYTHONPATH: backend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-postgres
+          path: bench/ci
+
+  # 4. Build the images the way production does, then drive the composed stack
+  #    with Playwright.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          load: true
+          tags: pitchscanner-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: pitchscanner-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend"
+          npm --prefix frontend ci || npm --prefix frontend install
+          npx --prefix frontend playwright install --with-deps chromium
+      - name: Ingest the fixtures into the in-memory snapshot
+        # The e2e API reads this snapshot, so it has to exist before Playwright
+        # starts the server.
+        run: python -m pitchscanner.cli --store memory ingest --fixtures
+        env:
+          PYTHONPATH: backend
+      - name: Playwright
+        working-directory: frontend
+        run: npm run test:e2e
+        env:
+          CI: 'true'
+          PYTHONPATH: ${{ github.workspace }}/backend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+
+  # 5. Short performance check. `bench --quick` writes the same report shape as
+  #    `make bench`, and the gate compares its p95 against the committed one.
+  perf:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e "backend"
+      - name: Ingest and benchmark
+        run: |
+          python -m pitchscanner.cli --store memory ingest --fixtures
+          python -m pitchscanner.cli --store memory bench --quick --out bench/ci
+        env:
+          PYTHONPATH: backend
+      - name: p95 regression gate
+        # Shared CI runners are noisy, so the tolerance is deliberately loose:
+        # this catches an algorithmic regression, not a percent of jitter.
+        run: |
+          python scripts/check_perf.py \
+            --baseline bench/reports/benchmark.json \
+            --candidate bench/ci/benchmark.json \
+            --tolerance 2.5
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-ci
+          path: bench/ci
+
+  # 6. On merge to main: publish the images. Deployment is a separate, gated
+  #    environment so a green build never deploys by accident.
+  publish:
+    runs-on: ubuntu-latest
+    needs: [integration, e2e, perf]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/api:latest
+          cache-from: type=gha,scope=api
+      - name: Push the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/web:latest
+          cache-from: type=gha,scope=web
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: publish
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        # Wired to whichever host runs the demo; the images are already pushed
+        # by the time this runs, so deployment is a tag roll, not a build.
+        env:
+          DEPLOY_HOOK: ${{ secrets.DEPLOY_HOOK }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [ -z "${DEPLOY_HOOK}" ]; then
+            echo "No DEPLOY_HOOK configured; images are published at ${IMAGE_TAG}."
+            exit 0
+          fi
+          curl -fsS -X POST "${DEPLOY_HOOK}" \
+            -H 'content-type: application/json' \
+            -d "{\"tag\":\"${IMAGE_TAG}\"}"

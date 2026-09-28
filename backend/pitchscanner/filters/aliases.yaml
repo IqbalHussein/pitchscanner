@@ -1,0 +1,83 @@
+# Aliases the data itself does not contain. Everything else (canonical names of
+# competitions, seasons, teams and players) is built from the dataset at
+# ingestion, so this file only ever holds nicknames and abbreviations.
+#
+# Keys are matched case-insensitively against the canonical name in the data.
+competitions:
+  "Premier League": ["epl", "prem", "the premier league", "english premier league"]
+  "1. Bundesliga": ["bundesliga", "buli", "german league"]
+  "La Liga": ["laliga", "primera division", "spanish league"]
+  "Serie A": ["seria a", "italian league"]
+  "Ligue 1": ["french league"]
+  "UEFA Euro": ["euros", "the euros", "european championship", "euro"]
+  "UEFA Europa League": ["europa league", "uel"]
+  "Champions League": ["ucl", "champions", "european cup"]
+  "FIFA World Cup": ["world cup", "the world cup", "wc", "mundial"]
+  "Women's World Cup": ["wwc", "womens world cup"]
+  "Copa del Rey": ["copa"]
+  "African Cup of Nations": ["afcon", "can"]
+  "Indian Super league": ["isl"]
+  "North American League": ["mls"]
+
+teams:
+  "Bayer Leverkusen": ["leverkusen", "b04", "bayer"]
+  "Manchester United": ["man utd", "man united", "united", "mufc"]
+  "Manchester City": ["man city", "city", "mcfc"]
+  "Tottenham Hotspur": ["spurs", "tottenham", "thfc"]
+  "Wolverhampton Wanderers": ["wolves"]
+  "Real Madrid": ["madrid", "los blancos"]
+  "Atlético Madrid": ["atletico", "atleti"]
+  "Barcelona": ["barca", "fc barcelona", "blaugrana"]
+  "Bayern Munich": ["bayern", "fcb munich"]
+  "Borussia Dortmund": ["dortmund", "bvb"]
+  "Paris Saint-Germain": ["psg", "paris"]
+  "Internazionale": ["inter", "inter milan"]
+  "AC Milan": ["milan"]
+  "Newcastle United": ["newcastle", "nufc"]
+  "Sheffield United": ["sheffield utd"]
+  "Brighton & Hove Albion": ["brighton"]
+  "Wolverhampton": ["wolves"]
+  "United States Women's": ["usa", "uswnt", "united states"]
+  "England": ["three lions"]
+  "Netherlands": ["holland", "dutch"]
+  "Spain": ["la roja"]
+
+# Phrase patterns. Each maps to a structured filter; order matters within a group
+# because the first match wins.
+game_state:
+  winning: ["when winning", "while winning", "protecting a lead", "with a lead", "ahead",
+            "in front", "leading"]
+  losing: ["when losing", "while losing", "behind", "chasing the game", "trailing",
+           "a goal down", "when they are losing"]
+  drawing: ["when level", "level", "when drawing", "tied", "at 0-0", "when it is level",
+            "all square"]
+
+stage:
+  knockout: ["knockout", "knockout rounds", "knockouts", "last 16", "round of 16",
+             "quarter final", "quarter-finals", "semi final", "semi-finals", "quarters",
+             "semis"]
+  # "final" alone counts, unless it is part of a semi- or quarter-final, which
+  # the knockout group above has already matched.
+  final: ["the final", "in the final", "finals", "final"]
+  group: ["group stage", "group games", "groups", "group phase"]
+  regular: ["league games", "regular season"]
+
+time:
+  # (phrase, minute_from, minute_to)
+  - ["first half", 0, 45]
+  - ["second half", 45, 98]
+  - ["opening 15", 0, 15]
+  - ["first 15 minutes", 0, 15]
+  - ["last 15 minutes", 75, 98]
+  - ["last 15", 75, 98]
+  - ["closing stages", 80, 98]
+  - ["stoppage time", 90, 98]
+  - ["added time", 90, 98]
+  - ["injury time", 90, 98]
+  - ["extra time", 90, 120]
+  - ["final ten minutes", 80, 98]
+  - ["early", 0, 20]
+
+role:
+  attacking: ["when", "attack", "attacking", "on the ball", "in possession", "involving"]
+  defending: ["against", "defending", "facing", "vs", "versus"]

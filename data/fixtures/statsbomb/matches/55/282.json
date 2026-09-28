@@ -1,0 +1,80 @@
+[
+ {
+  "match_id": 3900001,
+  "match_date": "2024-06-14",
+  "competition": {
+   "competition_id": 55,
+   "competition_name": "UEFA Euro"
+  },
+  "season": {
+   "season_id": 282,
+   "season_name": "2024"
+  },
+  "home_team": {
+   "home_team_id": 772,
+   "home_team_name": "Spain"
+  },
+  "away_team": {
+   "away_team_id": 914,
+   "away_team_name": "Germany"
+  },
+  "home_score": 4,
+  "away_score": 6,
+  "competition_stage": {
+   "id": 10,
+   "name": "Group Stage"
+  }
+ },
+ {
+  "match_id": 3900002,
+  "match_date": "2024-06-15",
+  "competition": {
+   "competition_id": 55,
+   "competition_name": "UEFA Euro"
+  },
+  "season": {
+   "season_id": 282,
+   "season_name": "2024"
+  },
+  "home_team": {
+   "home_team_id": 914,
+   "home_team_name": "Germany"
+  },
+  "away_team": {
+   "away_team_id": 791,
+   "away_team_name": "Morocco"
+  },
+  "home_score": 7,
+  "away_score": 1,
+  "competition_stage": {
+   "id": 10,
+   "name": "Group Stage"
+  }
+ },
+ {
+  "match_id": 3900003,
+  "match_date": "2024-06-16",
+  "competition": {
+   "competition_id": 55,
+   "competition_name": "UEFA Euro"
+  },
+  "season": {
+   "season_id": 282,
+   "season_name": "2024"
+  },
+  "home_team": {
+   "home_team_id": 791,
+   "home_team_name": "Morocco"
+  },
+  "away_team": {
+   "away_team_id": 768,
+   "away_team_name": "England"
+  },
+  "home_score": 5,
+  "away_score": 8,
+  "competition_stage": {
+   "id": 10,
+   "name": "Group Stage"
+  }
+ }
+]

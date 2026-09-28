@@ -1,0 +1,1328 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Match Situation Search Engine",
+    "description": "\nQuery-by-sketch search over StatsBomb positional data.\n\nDraw a situation, get the most similar real moments from professional matches and\nwhat those moments led to, against a zone baseline.\n\nData: [StatsBomb Open Data](https://github.com/statsbomb/open-data), free for\nnon-commercial use with attribution.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/search": {
+      "post": {
+        "summary": "Search by sketch",
+        "description": "Sketch in, the most similar real situations plus aggregated outcomes out.",
+        "operationId": "search_v1_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/filters/parse": {
+      "post": {
+        "summary": "Parse a free-text filter",
+        "description": "Text in; structured filters, chips, unmatched words and warnings out.",
+        "operationId": "parse_filters_v1_filters_parse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParsedFilters"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/filters": {
+      "get": {
+        "summary": "Available filters",
+        "description": "Only competitions and seasons that actually have 360 frames.",
+        "operationId": "filters_v1_filters_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiltersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/situations/{event_id}": {
+      "get": {
+        "summary": "One frame",
+        "operationId": "situation_v1_situations__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SituationDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/situations/{event_id}/sequence": {
+      "get": {
+        "summary": "What happened next",
+        "description": "The events that followed, for playback.",
+        "operationId": "sequence_v1_situations__event_id__sequence_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "window_s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 15.0,
+              "title": "Window S"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sequence"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/meta": {
+      "get": {
+        "summary": "Dataset counts and pitch dimensions",
+        "description": "Real counts, so the README and the resume can quote something committed.",
+        "operationId": "meta_v1_meta_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Meta V1 Meta Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Liveness",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Healthz Healthz Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readiness: database reachable and index loaded",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Readyz Readyz Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus metrics",
+        "operationId": "prometheus_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Chip": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "label",
+          "value"
+        ],
+        "title": "Chip"
+      },
+      "CompetitionCoverage": {
+        "properties": {
+          "competition_id": {
+            "type": "integer",
+            "title": "Competition Id"
+          },
+          "competition_name": {
+            "type": "string",
+            "title": "Competition Name"
+          },
+          "matches": {
+            "type": "integer",
+            "title": "Matches"
+          },
+          "frames": {
+            "type": "integer",
+            "title": "Frames"
+          },
+          "seasons": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonCoverage"
+            },
+            "type": "array",
+            "title": "Seasons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competition_id",
+          "competition_name",
+          "matches",
+          "frames",
+          "seasons"
+        ],
+        "title": "CompetitionCoverage"
+      },
+      "Filters": {
+        "properties": {
+          "competition_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Competition Ids"
+          },
+          "season_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Season Ids"
+          },
+          "team_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Team Ids"
+          },
+          "team_role": {
+            "type": "string",
+            "enum": [
+              "any",
+              "attacking",
+              "defending"
+            ],
+            "title": "Team Role",
+            "default": "any"
+          },
+          "player_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Player Ids"
+          },
+          "player_role": {
+            "type": "string",
+            "enum": [
+              "any",
+              "attacking",
+              "defending"
+            ],
+            "title": "Player Role",
+            "default": "any"
+          },
+          "game_state": {
+            "type": "string",
+            "enum": [
+              "any",
+              "winning",
+              "drawing",
+              "losing"
+            ],
+            "title": "Game State",
+            "default": "any"
+          },
+          "minute_range": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minute Range"
+          },
+          "stages": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "group",
+                "knockout",
+                "final",
+                "regular"
+              ]
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "ball_zone_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Ball Zone Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Filters"
+      },
+      "FiltersResponse": {
+        "properties": {
+          "competitions": {
+            "items": {
+              "$ref": "#/components/schemas/CompetitionCoverage"
+            },
+            "type": "array",
+            "title": "Competitions"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamOption"
+            },
+            "type": "array",
+            "title": "Teams"
+          },
+          "stages": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "group",
+                "knockout",
+                "final",
+                "regular"
+              ]
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "game_states": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "any",
+                "winning",
+                "drawing",
+                "losing"
+              ]
+            },
+            "type": "array",
+            "title": "Game States"
+          },
+          "encodings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Encodings"
+          },
+          "total_frames": {
+            "type": "integer",
+            "title": "Total Frames"
+          },
+          "total_matches": {
+            "type": "integer",
+            "title": "Total Matches"
+          },
+          "total_events": {
+            "type": "integer",
+            "title": "Total Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competitions",
+          "teams",
+          "stages",
+          "game_states",
+          "encodings",
+          "total_frames",
+          "total_matches",
+          "total_events"
+        ],
+        "title": "FiltersResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Interval": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "ci95": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Ci95"
+          },
+          "vs_zone_baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vs Zone Baseline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "ci95"
+        ],
+        "title": "Interval"
+      },
+      "Outcome": {
+        "properties": {
+          "shot": {
+            "type": "boolean",
+            "title": "Shot"
+          },
+          "xg_next": {
+            "type": "number",
+            "title": "Xg Next"
+          },
+          "goal": {
+            "type": "boolean",
+            "title": "Goal"
+          },
+          "turnover": {
+            "type": "boolean",
+            "title": "Turnover"
+          },
+          "box_entry": {
+            "type": "boolean",
+            "title": "Box Entry"
+          },
+          "seconds_to_end": {
+            "type": "number",
+            "title": "Seconds To End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shot",
+          "xg_next",
+          "goal",
+          "turnover",
+          "box_entry",
+          "seconds_to_end"
+        ],
+        "title": "Outcome"
+      },
+      "ParseRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "ParseRequest"
+      },
+      "ParsedFilters": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "chips": {
+            "items": {
+              "$ref": "#/components/schemas/Chip"
+            },
+            "type": "array",
+            "title": "Chips"
+          },
+          "unmatched": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmatched"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "rules",
+              "llm",
+              "none"
+            ],
+            "title": "Source",
+            "default": "rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filters",
+          "chips",
+          "unmatched",
+          "warnings"
+        ],
+        "title": "ParsedFilters"
+      },
+      "PointIn": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "X",
+            "description": "0 at own goal line, 120 at the target goal"
+          },
+          "y": {
+            "type": "number",
+            "maximum": 80.0,
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "keeper": {
+            "type": "boolean",
+            "title": "Keeper",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "PointIn"
+      },
+      "SearchOptions": {
+        "properties": {
+          "mirror": {
+            "type": "boolean",
+            "title": "Mirror",
+            "default": true
+          },
+          "encoding": {
+            "type": "string",
+            "title": "Encoding",
+            "default": "E1"
+          },
+          "window_s": {
+            "type": "number",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Window S",
+            "default": 15.0
+          },
+          "dedup": {
+            "type": "boolean",
+            "title": "Dedup",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SearchOptions"
+      },
+      "SearchRequest": {
+        "properties": {
+          "ball": {
+            "$ref": "#/components/schemas/PointIn"
+          },
+          "attackers": {
+            "items": {
+              "$ref": "#/components/schemas/PointIn"
+            },
+            "type": "array",
+            "maxItems": 11,
+            "title": "Attackers"
+          },
+          "defenders": {
+            "items": {
+              "$ref": "#/components/schemas/PointIn"
+            },
+            "type": "array",
+            "maxItems": 11,
+            "title": "Defenders"
+          },
+          "k": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "K",
+            "default": 25
+          },
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "filter_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Text"
+          },
+          "options": {
+            "$ref": "#/components/schemas/SearchOptions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ball"
+        ],
+        "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parsed_filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParsedFilters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filters_applied": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "encoding": {
+            "type": "string",
+            "title": "Encoding"
+          },
+          "candidates_examined": {
+            "type": "integer",
+            "title": "Candidates Examined"
+          },
+          "relaxed": {
+            "type": "boolean",
+            "title": "Relaxed",
+            "default": false
+          },
+          "timing_ms": {
+            "$ref": "#/components/schemas/Timing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "stats",
+          "filters_applied",
+          "encoding",
+          "candidates_examined",
+          "timing_ms"
+        ],
+        "title": "SearchResponse"
+      },
+      "SearchResult": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "distance": {
+            "type": "number",
+            "title": "Distance"
+          },
+          "similarity": {
+            "type": "number",
+            "title": "Similarity"
+          },
+          "match": {
+            "type": "string",
+            "title": "Match"
+          },
+          "match_id": {
+            "type": "integer",
+            "title": "Match Id"
+          },
+          "competition": {
+            "type": "string",
+            "title": "Competition"
+          },
+          "season": {
+            "type": "string",
+            "title": "Season"
+          },
+          "minute": {
+            "type": "integer",
+            "title": "Minute"
+          },
+          "period": {
+            "type": "integer",
+            "title": "Period"
+          },
+          "possession_id": {
+            "type": "integer",
+            "title": "Possession Id"
+          },
+          "team": {
+            "type": "string",
+            "title": "Team"
+          },
+          "mirrored": {
+            "type": "boolean",
+            "title": "Mirrored"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "distance",
+          "similarity",
+          "match",
+          "match_id",
+          "competition",
+          "season",
+          "minute",
+          "period",
+          "possession_id",
+          "team",
+          "mirrored"
+        ],
+        "title": "SearchResult"
+      },
+      "SeasonCoverage": {
+        "properties": {
+          "season_id": {
+            "type": "integer",
+            "title": "Season Id"
+          },
+          "season_name": {
+            "type": "string",
+            "title": "Season Name"
+          },
+          "matches": {
+            "type": "integer",
+            "title": "Matches"
+          },
+          "frames": {
+            "type": "integer",
+            "title": "Frames"
+          }
+        },
+        "type": "object",
+        "required": [
+          "season_id",
+          "season_name",
+          "matches",
+          "frames"
+        ],
+        "title": "SeasonCoverage"
+      },
+      "Sequence": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "window_s": {
+            "type": "number",
+            "title": "Window S"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceEvent"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "window_s",
+          "events"
+        ],
+        "title": "Sequence"
+      },
+      "SequenceEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "team": {
+            "type": "string",
+            "title": "Team"
+          },
+          "player": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player"
+          },
+          "x": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X"
+          },
+          "y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y"
+          },
+          "second_offset": {
+            "type": "number",
+            "title": "Second Offset"
+          },
+          "xg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xg"
+          },
+          "goal": {
+            "type": "boolean",
+            "title": "Goal",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "type",
+          "team",
+          "player",
+          "x",
+          "y",
+          "second_offset"
+        ],
+        "title": "SequenceEvent"
+      },
+      "SituationDetail": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "match_id": {
+            "type": "integer",
+            "title": "Match Id"
+          },
+          "match": {
+            "type": "string",
+            "title": "Match"
+          },
+          "competition": {
+            "type": "string",
+            "title": "Competition"
+          },
+          "season": {
+            "type": "string",
+            "title": "Season"
+          },
+          "minute": {
+            "type": "integer",
+            "title": "Minute"
+          },
+          "period": {
+            "type": "integer",
+            "title": "Period"
+          },
+          "possession_id": {
+            "type": "integer",
+            "title": "Possession Id"
+          },
+          "team": {
+            "type": "string",
+            "title": "Team"
+          },
+          "ball": {
+            "$ref": "#/components/schemas/PointIn"
+          },
+          "attackers": {
+            "items": {
+              "$ref": "#/components/schemas/PointIn"
+            },
+            "type": "array",
+            "title": "Attackers"
+          },
+          "defenders": {
+            "items": {
+              "$ref": "#/components/schemas/PointIn"
+            },
+            "type": "array",
+            "title": "Defenders"
+          },
+          "visible_area": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PointIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visible Area"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "match_id",
+          "match",
+          "competition",
+          "season",
+          "minute",
+          "period",
+          "possession_id",
+          "team",
+          "ball",
+          "attackers",
+          "defenders",
+          "visible_area",
+          "outcome"
+        ],
+        "title": "SituationDetail"
+      },
+      "Stats": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "n_possessions": {
+            "type": "integer",
+            "title": "N Possessions"
+          },
+          "shot_rate": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "xg_mean": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "turnover_rate": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "box_entry_rate": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "goal_rate": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "unweighted": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Unweighted"
+          },
+          "zone_id": {
+            "type": "integer",
+            "title": "Zone Id"
+          },
+          "zone_label": {
+            "type": "string",
+            "title": "Zone Label"
+          },
+          "baseline_n": {
+            "type": "integer",
+            "title": "Baseline N"
+          },
+          "low_confidence": {
+            "type": "boolean",
+            "title": "Low Confidence"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "n_possessions",
+          "shot_rate",
+          "xg_mean",
+          "turnover_rate",
+          "box_entry_rate",
+          "goal_rate",
+          "unweighted",
+          "zone_id",
+          "zone_label",
+          "baseline_n",
+          "low_confidence"
+        ],
+        "title": "Stats"
+      },
+      "TeamOption": {
+        "properties": {
+          "team_id": {
+            "type": "integer",
+            "title": "Team Id"
+          },
+          "team_name": {
+            "type": "string",
+            "title": "Team Name"
+          },
+          "frames": {
+            "type": "integer",
+            "title": "Frames"
+          }
+        },
+        "type": "object",
+        "required": [
+          "team_id",
+          "team_name",
+          "frames"
+        ],
+        "title": "TeamOption"
+      },
+      "Timing": {
+        "properties": {
+          "encode": {
+            "type": "number",
+            "title": "Encode"
+          },
+          "search": {
+            "type": "number",
+            "title": "Search"
+          },
+          "dedup": {
+            "type": "number",
+            "title": "Dedup"
+          },
+          "aggregate": {
+            "type": "number",
+            "title": "Aggregate"
+          },
+          "total": {
+            "type": "number",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "encode",
+          "search",
+          "dedup",
+          "aggregate",
+          "total"
+        ],
+        "title": "Timing"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

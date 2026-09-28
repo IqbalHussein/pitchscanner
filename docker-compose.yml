@@ -1,0 +1,59 @@
+# The whole stack locally: `make up`.
+#
+# The database is built by the batch job and restored from a dump in production,
+# so nothing here runs ingestion on start; `make ingest` does that explicitly.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: pitchscanner
+      POSTGRES_PASSWORD: pitchscanner
+      POSTGRES_DB: pitchscanner
+    ports: ['5432:5432']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pitchscanner -d pitchscanner']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      PITCHSCANNER_DSN: postgresql://pitchscanner:pitchscanner@db:5432/pitchscanner
+      PITCHSCANNER_STORE: postgres
+      PITCHSCANNER_CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+      PITCHSCANNER_INDEX_KIND: hnsw
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ['8000:8000']
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      API_UPSTREAM: http://api:8000
+    depends_on: [api]
+    ports: ['8080:80']
+
+  # One-shot: ingest the checked-in fixtures into the database.
+  # `docker compose run --rm ingest` (or `make ingest-docker`).
+  ingest:
+    build:
+      context: ./backend
+    profiles: ['tools']
+    environment:
+      PITCHSCANNER_DSN: postgresql://pitchscanner:pitchscanner@db:5432/pitchscanner
+      PITCHSCANNER_STORE: postgres
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ['python', '-m', 'pitchscanner.cli', 'ingest', '--data-dir', '/app/data/fixtures/statsbomb']
+
+volumes:
+  pgdata:

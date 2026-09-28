@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/src/lib/api-types.ts
+
+# Data and build artefacts
+.data/
+.env
+
+# Benchmark outputs that are regenerated; the committed report is checked in
+# explicitly with `git add -f bench/reports/benchmark.md`.
+bench/reports/rejects.jsonl
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# CI writes a throwaway benchmark here; only bench/reports/ is committed.
+bench/ci/

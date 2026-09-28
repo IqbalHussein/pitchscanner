@@ -140,7 +140,6 @@ def run_all(
     payload["quality"] = [
         r.as_dict()
         for r in score_encodings(
-            store,
             Path(out_dir) / "eval-pool.jsonl",
             Path(out_dir) / "eval-labels.jsonl",
         )

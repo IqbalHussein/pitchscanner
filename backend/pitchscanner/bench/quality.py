@@ -103,8 +103,18 @@ def dcg(relevances: list[int]) -> float:
     return sum(rel / math.log2(i + 2) for i, rel in enumerate(relevances))
 
 
-def ndcg_at_k(ranked: list[int], k: int) -> float:
-    ideal = sorted(ranked, reverse=True)[:k]
+def ndcg_at_k(ranked: list[int], k: int, *, judged: list[int] | None = None) -> float:
+    """nDCG@k, with the ideal ranking taken over everything judged for the query.
+
+    ``judged`` is the relevance of every labelled candidate in the pool for this
+    query, not just the ones this encoding returned. Using the encoding's own
+    results as the ideal instead - which is the easy mistake - scores each
+    encoding against itself: a run that misses every relevant result but orders
+    its three irrelevant ones "correctly" comes out at 1.0. Pooling exists
+    precisely so the achievable best is known, so it is what the denominator uses.
+    """
+
+    ideal = sorted(judged if judged is not None else ranked, reverse=True)[:k]
     denom = dcg(ideal)
     return dcg(ranked[:k]) / denom if denom > 0 else 0.0
 
@@ -125,10 +135,24 @@ class QualityResult:
         }
 
 
+def _rank_for(candidate: dict[str, object], encoding: str) -> int | None:
+    """Where this encoding ranked the candidate, or None if it never returned it."""
+
+    sources = candidate.get("from") or []
+    assert isinstance(sources, list)
+    ranks = [int(s["rank"]) for s in sources if s["encoding"] == encoding]
+    return min(ranks) if ranks else None
+
+
 def score_encodings(
-    store: Store, pool_path: Path, labels_path: Path, *, k: int = 10
+    pool_path: Path, labels_path: Path, *, k: int = 10
 ) -> list[QualityResult]:
-    """Score each encoding against the labels. Unlabelled queries are skipped."""
+    """Score each encoding against the labels. Unlabelled queries are skipped.
+
+    Scoring reads the committed pool file rather than re-running search, so the
+    labels stay attached to exactly the results they were written for: a later
+    change to an encoder cannot silently re-point old judgements at new results.
+    """
 
     labels = load_labels(labels_path)
     if not labels or not pool_path.exists():
@@ -144,20 +168,28 @@ def score_encodings(
                 qid = str(row["query_id"])
                 if qid not in labels:
                     continue
-                ranked = [
-                    labels[qid].get(str(c["event_id"]), 0)
-                    for c in sorted(
-                        row["candidates"],
-                        key=lambda c: min(
-                            (f["rank"] for f in c["from"] if f["encoding"] == encoding),
-                            default=10**6,
-                        ),
-                    )[:k]
-                ]
-                if not ranked:
+                # Only what *this* encoding actually returned, in its own order.
+                # The pool is the union over encodings, so including candidates
+                # this encoding never retrieved would score it on someone else's
+                # results.
+                retrieved = sorted(
+                    (
+                        (rank, candidate)
+                        for candidate in row["candidates"]
+                        if (rank := _rank_for(candidate, encoding)) is not None
+                    ),
+                    key=lambda pair: pair[0],
+                )
+                if not retrieved:
                     continue
+                ranked = [
+                    labels[qid].get(str(c["event_id"]), 0) for _, c in retrieved[:k]
+                ]
+                judged = [
+                    labels[qid].get(str(c["event_id"]), 0) for c in row["candidates"]
+                ]
                 precisions.append(sum(1 for r in ranked if r > 0) / len(ranked))
-                ndcgs.append(ndcg_at_k(ranked, k))
+                ndcgs.append(ndcg_at_k(ranked, k, judged=judged))
         results.append(
             QualityResult(
                 encoding=encoding,

@@ -120,9 +120,12 @@ Two details that matter more than the bin counts:
 ## Benchmarks
 
 Numbers below are copied from [`bench/reports/benchmark.md`](bench/reports/benchmark.md),
-which `make bench` regenerates. Nothing is quoted anywhere in this repo that is
-not in that file. This run is the **fixture** dataset on the in-memory store, on
-a WSL2 laptop.
+which `make bench` regenerates; the tables here are a snapshot of that file at
+commit `a475a4e`, and nothing is quoted anywhere in this repo that is not in it.
+This run is the **fixture** dataset on the in-memory store, on a WSL2 laptop, so
+treat the absolute milliseconds as a shape rather than a spec — repeat runs on
+the same machine vary by around 1.5x, which is why the CI regression gate allows
+2.5x.
 
 Dataset:
 
@@ -135,9 +138,9 @@ p95 for that stage:
 
 | encoding | p50 | p95 | p99 | encode | search | dedup | aggregate | target |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| E0 | 9.3 | 13.9 | 17.2 | 0.39 | 11.1 | 0.20 | 2.4 | PASS |
-| E1 | 1.5 | 2.3 | 3.1 | 0.18 | 1.1 | 0.09 | 1.0 | PASS |
-| E2 | 1.3 | 1.7 | 2.2 | 0.17 | 0.7 | 0.08 | 0.8 | PASS |
+| E0 | 9.3 | 19.7 | 28.4 | 0.57 | 16.7 | 0.26 | 3.3 | PASS |
+| E1 | 1.7 | 3.0 | 3.9 | 0.32 | 1.4 | 0.17 | 1.3 | PASS |
+| E2 | 1.3 | 2.1 | 2.7 | 0.20 | 0.8 | 0.09 | 1.0 | PASS |
 
 Targets: end-to-end p95 under 150ms, aggregation under 10ms, encoding under 1ms.
 

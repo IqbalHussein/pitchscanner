@@ -1160,6 +1160,10 @@
             "type": "integer",
             "title": "N"
           },
+          "effective_n": {
+            "type": "number",
+            "title": "Effective N"
+          },
           "n_possessions": {
             "type": "integer",
             "title": "N Possessions"
@@ -1213,6 +1217,7 @@
         "type": "object",
         "required": [
           "n",
+          "effective_n",
           "n_possessions",
           "shot_rate",
           "xg_mean",

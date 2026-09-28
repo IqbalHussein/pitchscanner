@@ -219,6 +219,9 @@ class SearchResult(BaseModel):
 
 class Stats(BaseModel):
     n: int
+    #: Kish effective sample size: how many independent observations the
+    #: similarity weighting leaves. Always <= n.
+    effective_n: float
     n_possessions: int
     shot_rate: Interval
     xg_mean: Interval

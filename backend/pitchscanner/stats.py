@@ -112,6 +112,10 @@ class Aggregate:
     """The aggregated block, typed, so callers do not unpack a bag of objects."""
 
     n: int
+    #: Kish effective sample size. Reported next to `n` rather than buried in
+    #: `unweighted`, because the gap between the two is the interesting part:
+    #: similarity weighting can make 40 neighbours behave like 12.
+    effective_n: float
     shot_rate: Interval
     xg_mean: Interval
     turnover_rate: Interval
@@ -160,7 +164,6 @@ def aggregate(
         "box_entry_rate": _mean([o.box_entry for o in outcomes]),
         "goal_rate": _mean([o.goal for o in outcomes]),
         "seconds_to_end": _mean([o.seconds_to_end for o in outcomes]),
-        "effective_n": round(effective_n(weights), 2),
     }
 
     notes: list[str] = []
@@ -172,6 +175,7 @@ def aggregate(
 
     return Aggregate(
         n=n,
+        effective_n=round(effective_n(weights), 2),
         shot_rate=shot,
         xg_mean=xg,
         turnover_rate=turnover,

@@ -262,6 +262,7 @@ class SearchService:
         )
         stats = Stats(
             n=agg.n,
+            effective_n=agg.effective_n,
             n_possessions=n_possessions,
             shot_rate=agg.shot_rate,
             xg_mean=agg.xg_mean,

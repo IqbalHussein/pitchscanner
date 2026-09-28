@@ -57,8 +57,13 @@ export function StatsPanel({ stats }: { stats: Stats | null }) {
       <header className="stats-head">
         <h2>What happened next</h2>
         <p className="muted">
-          {stats.n_possessions} distinct possessions · baseline from {stats.baseline_n} frames in
-          the {stats.zone_label}
+          {stats.n_possessions} distinct possessions
+          {' · '}
+          <span title="Kish effective sample size: similarity weighting means the closest matches count for more, so the sample carries less information than its size suggests">
+            {stats.effective_n.toFixed(1)} effective
+          </span>
+          {' · '}
+          baseline from {stats.baseline_n} frames in the {stats.zone_label}
         </p>
       </header>
 

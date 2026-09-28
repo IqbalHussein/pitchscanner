@@ -128,10 +128,11 @@ exists to prevent.
 - **Similarity weighting.** A neighbour at distance 0.02 should count for more
   than one at 0.4, so each contributes `w = 1/(1+d)`. That is a heuristic; it is
   chosen for being monotone, bounded and free of tuning parameters.
-- **Effective sample size.** Weighting reduces information. The reported `effective_n`
-  is Kish's effective sample size, which is what the intervals are computed from;
-  the raw count is reported too, because the gap between them is the interesting
-  part.
+- **Effective sample size.** Weighting reduces information. `effective_n` is
+  Kish's effective sample size, it is what the intervals are computed from, and it
+  is a first-class field on the response next to `n` - not a line item inside
+  `unweighted`, where nobody would look for it. The frontend shows both, because
+  the gap between them is the interesting part.
 - **Wilson intervals for rates**, not normal approximations: rates here are often
   near 0 (goals) where the normal interval happily returns a negative lower
   bound.

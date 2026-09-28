@@ -107,6 +107,8 @@ export interface Stats {
   turnover_rate: Interval;
   box_entry_rate: Interval;
   goal_rate: Interval;
+  /** Kish effective sample size; always <= n. */
+  effective_n: number;
   unweighted: Record<string, number>;
   zone_id: number;
   zone_label: string;

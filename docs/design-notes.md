@@ -237,8 +237,9 @@ nightly job because that is the only place with an index to be approximate about
 called `store.match()` and `store.frame()` inside the per-result loop: two round
 trips per hit, twenty per query, and about 27ms of latency that no amount of
 index tuning would have fixed. Batched into two keyed reads, the stage drops to
-5.5ms p95 and the end-to-end p95 goes from 34.6ms to 8.9ms on E1 (the committed
-report: `bench/reports/postgres/benchmark.md`).
+7.1ms p95 and the end-to-end p95 from 34.6ms to 11.9ms on E1 (the committed
+report: `bench/reports/postgres/benchmark.md`; the absolute numbers move a little
+run to run on a laptop, the ratio does not).
 
 The in-memory store could never have shown this - a dict lookup in a loop is
 free, which is exactly why the second implementation has to be the slow one when
@@ -248,8 +249,9 @@ it matters.
 
 Benchmarked rather than argued about (`bench/faiss_compare.py`, optional
 dependency). With the same HNSW parameters over the same vectors, FAISS searches
-the 72-dimensional E1 index at 0.22ms p95 against pgvector's 2.7ms, at the same
-recall - about twelve times faster.
+the 72-dimensional E1 index at 0.22ms p95 against pgvector's 3.5ms - roughly
+sixteen times faster - at recall 0.998 against exact search, against pgvector's
+1.000.
 
 It still loses, for reasons that have nothing to do with speed:
 
@@ -262,8 +264,8 @@ It still loses, for reasons that have nothing to do with speed:
   and is rebuilt by the same batch job in the same transaction. A FAISS index is
   a separate artefact with a separate lifecycle, which is a second thing to
   deploy, warm and invalidate.
-- **The budget does not care.** Search is 2.7ms of an 8.9ms end-to-end p95
-  against a 150ms target. Spending an operational component to reclaim 2.5ms is a
+- **The budget does not care.** Search is 3.5ms of an 11.9ms end-to-end p95
+  against a 150ms target. Spending an operational component to reclaim 4ms is a
   bad trade, and would stay a bad trade at ten times the corpus.
 
 The number to watch is corpus size. At 5,018 vectors both are effectively exact;

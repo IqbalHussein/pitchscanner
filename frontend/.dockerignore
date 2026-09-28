@@ -1,0 +1,15 @@
+# Without this, `COPY . .` drops the host's node_modules into the image on top of
+# the one npm just installed there. If the host is glibc and the image is musl
+# (or vice versa) the native rollup binding no longer matches and `vite build`
+# fails with "Cannot find module @rollup/rollup-linux-x64-musl" - a build failure
+# that reproduces nowhere else.
+node_modules
+dist
+test-results
+playwright-report
+blob-report
+.env
+.env.*
+Dockerfile
+.dockerignore
+src/lib/api-types.ts

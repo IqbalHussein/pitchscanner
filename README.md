@@ -147,9 +147,9 @@ milliseconds, stage columns are p95 for that stage:
 
 | encoding | p50 | p95 | p99 | encode | search | dedup | aggregate | target |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| E0 | 6.8 | 9.4 | 12.1 | 0.35 | 3.0 | 1.3 | 5.9 | PASS |
-| E1 | 6.5 | 8.9 | 12.5 | 0.35 | 2.7 | 1.3 | 5.5 | PASS |
-| E2 | 8.9 | 11.5 | 14.3 | 0.36 | 4.8 | 2.3 | 5.4 | PASS |
+| E0 | 8.1 | 11.3 | 15.2 | 0.40 | 3.6 | 1.7 | 6.9 | PASS |
+| E1 | 8.0 | 11.9 | 14.6 | 0.38 | 3.5 | 1.6 | 7.1 | PASS |
+| E2 | 9.6 | 13.3 | 17.3 | 0.39 | 5.4 | 2.7 | 6.3 | PASS |
 
 Targets: end-to-end p95 under 150ms, aggregation under 10ms, encoding under 1ms.
 The aggregate column is the one worth watching — the first Postgres run had it at
@@ -194,16 +194,16 @@ than dismissed: same HNSW parameters, in process, over the same vectors.
 
 | encoding | build | search p50 | search p95 | recall@10 |
 | --- | --- | --- | --- | --- |
-| E0 | 849ms | 0.20ms | 0.61ms | 1.000 |
-| E1 | 644ms | 0.09ms | 0.22ms | 1.000 |
-| E2 | 459ms | 0.06ms | 0.17ms | 1.000 |
+| E0 | 679ms | 0.10ms | 0.29ms | 1.000 |
+| E1 | 588ms | 0.11ms | 0.22ms | 0.998 |
+| E2 | 532ms | 0.09ms | 0.17ms | 1.000 |
 
-FAISS searches the E1 index about twelve times faster than pgvector does
-(0.22ms vs 2.7ms p95) — and the search stage is only 2.7ms of an 8.9ms
-end-to-end p95, so adopting it would buy roughly 2.5ms inside a 150ms budget. The
-price is a second process owning an in-memory index that knows nothing about the
-filter columns every query uses, plus the job of keeping it in step with the
-database. pgvector stays. `pip install -e "backend[faiss]"` to reproduce the
+FAISS searches the E1 index roughly sixteen times faster than pgvector does
+(0.22ms vs 3.5ms p95), at recall 0.998 against exact search where pgvector
+manages 1.000 — and the search stage is only 3.5ms of an 11.9ms end-to-end p95,
+so adopting it would reclaim about 4ms inside a 150ms budget. The price is a second process owning an in-memory index that knows
+nothing about the filter columns every query uses, plus the job of keeping it in
+step with the database. pgvector stays. `pip install -e "backend[faiss]"` to reproduce the
 table; without it the report says the comparison is missing rather than omitting
 the section.
 
@@ -221,7 +221,7 @@ metrics themselves are unit-tested against hand-computed values, including that
 nDCG's ideal ranking comes from the whole pool rather than from the run being
 scored.
 
-**Tests.** 129 fast tests (unit, property-based, golden snapshots) plus 16
+**Tests.** 135 fast tests (unit, property-based, golden snapshots) plus 16
 integration tests against a real Postgres with pgvector, plus 24 Playwright tests
 across desktop and mobile viewports; 98% statement coverage on the core packages
 (encoders, labeller, stats, geometry, filters) against an 85% gate.

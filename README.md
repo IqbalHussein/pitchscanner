@@ -21,6 +21,7 @@ trailing"), parsed by rules first and only then, optionally, by a model.
 - [Quick start](#quick-start)
 - [The three encodings](#the-three-encodings)
 - [Benchmarks](#benchmarks)
+- [Observability](#observability)
 - [Design notes](#design-notes)
 - [Limitations](#limitations)
 - [Development](#development)
@@ -186,6 +187,35 @@ numbers here, and the report refuses to invent any.
 Playwright tests across desktop and mobile viewports; 98% statement coverage on
 the core packages (encoders, labeller, stats, geometry, filters) against an 85%
 gate. Integration tests need Postgres and skip without a DSN.
+
+## Observability
+
+```bash
+make up          # the app
+make monitoring  # Prometheus, Grafana, and a blackbox probe of /readyz
+                 # grafana: http://localhost:3000 (anonymous, local only)
+```
+
+![Grafana dashboard](docs/media/grafana.png)
+
+> _Placeholder: screenshot `docs/media/grafana.png` from a local
+> `make monitoring` run after some traffic._
+
+Every request logs one structured JSON line carrying a request id (propagated
+through a contextvar, so the id appears on log lines written deep in the search
+service), and every response carries a `server-timing` header with the per-stage
+breakdown. `GET /metrics` exposes request and per-stage latency histograms, cache
+hits and misses, handled errors, rate-limit rejections, exact-scan fallbacks and
+the vector count per encoding.
+
+The dashboard in [`ops/grafana/dashboards/pitchscanner.json`](ops/grafana/dashboards/pitchscanner.json)
+is provisioned automatically and shows eight panels: request percentiles with the
+150ms budget drawn as a threshold line, per-stage p95 (so "which stage moved?" is
+one glance, not an investigation), throughput by status, cache hit rate, errors
+and rejections, exact-scan fallback rate, indexed vectors per encoding, and 24h
+`/readyz` availability. [`ops/alerts.yml`](ops/alerts.yml) has three alerts and
+deliberately no more: the service is down, the p95 has been over budget for ten
+minutes, or the error rate is elevated.
 
 ## Design notes
 

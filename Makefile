@@ -13,7 +13,7 @@ export PYTHONPATH := $(BACKEND)
 
 .DEFAULT_GOAL := help
 .PHONY: help venv install fixtures ingest ingest-real ingest-docker serve web \
-        up down logs test test-unit test-property test-golden test-integration \
+        up down logs monitoring test test-unit test-property test-golden test-integration \
         test-e2e bench bench-quick perf-gate eval-pool lint format typecheck openapi \
         migrate clean ci
 
@@ -59,8 +59,12 @@ up: ## Bring up the whole stack (db, api, web) and load the sample dataset
 	docker compose run --rm ingest
 	@echo "app: http://localhost:8080   api docs: http://localhost:8000/docs"
 
+monitoring: ## Add Prometheus, Grafana (dashboard provisioned) and the /readyz probe
+	docker compose --profile monitoring up -d
+	@echo "grafana: http://localhost:3000   prometheus: http://localhost:9090"
+
 down: ## Stop the stack
-	docker compose down
+	docker compose --profile monitoring --profile tools down
 
 logs: ## Tail the stack's logs
 	docker compose logs -f --tail=100

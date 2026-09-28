@@ -1,0 +1,328 @@
+{
+  "uid": "pitchscanner",
+  "title": "Match Situation Search Engine",
+  "description": "Latency against the 150ms budget, where the time goes, and the two things that quietly degrade quality: cache misses and exact-scan fallbacks.",
+  "tags": [
+    "pitchscanner"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "editable": true,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request latency (p50 / p95 / p99)",
+      "description": "/v1/search only. The 150ms budget is drawn as a threshold.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(pitchscanner_request_seconds_bucket{path=\"/v1/search\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pitchscanner_request_seconds_bucket{path=\"/v1/search\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(pitchscanner_request_seconds_bucket{path=\"/v1/search\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.15
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Per-stage p95",
+      "description": "encode / search / dedup / aggregate. Which stage moved is the first question when the p95 panel moves.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(pitchscanner_stage_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Requests per second by status",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "sum by (status) (rate(pitchscanner_request_seconds_count[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Cache hit rate",
+      "description": "A cold cache after a deploy is expected; a permanently low rate means the query mix is more varied than the cache size assumes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "sum(rate(pitchscanner_cache_hits_total[5m])) / clamp_min(sum(rate(pitchscanner_cache_hits_total[5m])) + sum(rate(pitchscanner_cache_misses_total[5m])), 0.0001)",
+          "legendFormat": "hit rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Errors and rejections",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "sum by (kind) (rate(pitchscanner_errors_total[5m]))",
+          "legendFormat": "error: {{kind}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "sum(rate(pitchscanner_rate_limited_total[5m]))",
+          "legendFormat": "rate limited"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Exact-scan fallbacks",
+      "description": "Searches served by scanning a filtered subset instead of the ANN index. A sustained rise means users are filtering harder than the threshold assumes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "sum(rate(pitchscanner_exact_fallback_total[5m]))",
+          "legendFormat": "fallbacks/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Vectors indexed",
+      "description": "Flat between ingests. A step down means a partial load.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 14,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "pitchscanner_index_vectors",
+          "legendFormat": "{{encoding_version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "/readyz availability (24h)",
+      "description": "The uptime check. Probed by blackbox_exporter, not by the app itself.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pitchscanner-prom"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pitchscanner-prom"
+          },
+          "expr": "avg_over_time(probe_success{job=\"readyz\"}[24h])",
+          "legendFormat": "uptime"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

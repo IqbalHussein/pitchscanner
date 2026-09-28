@@ -1,0 +1,31 @@
+# Deliberately short. Three things are worth waking up for: the service is down,
+# it is slow enough to break the latency promise, or it is erroring.
+groups:
+  - name: pitchscanner
+    rules:
+      - alert: ApiDown
+        expr: probe_success{job="readyz"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: '/readyz has been failing for two minutes'
+
+      - alert: SearchLatencyBudgetBreached
+        # The spec's promise is a 150ms p95; alert only if it holds for a while,
+        # because a single slow minute after a restart is a cold cache, not a bug.
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(pitchscanner_request_seconds_bucket{path="/v1/search"}[5m]))
+          ) > 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'search p95 above the 150ms budget for ten minutes'
+
+      - alert: ErrorRateElevated
+        expr: sum(rate(pitchscanner_errors_total[5m])) > 0.2
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'handled errors above 0.2/s'

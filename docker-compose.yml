@@ -55,5 +55,36 @@ services:
         condition: service_healthy
     command: ['python', '-m', 'pitchscanner.cli', 'ingest', '--data-dir', '/app/data/fixtures/statsbomb']
 
+  # --- monitoring (profile: monitoring) ----------------------------------
+  # `docker compose --profile monitoring up -d` adds Prometheus, Grafana with the
+  # dashboard already provisioned, and a blackbox probe of /readyz.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ['monitoring']
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ['9090:9090']
+    depends_on: [api]
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    profiles: ['monitoring']
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ['monitoring']
+    environment:
+      # Local-only stack; anonymous viewing keeps the demo one click away.
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['3000:3000']
+    depends_on: [prometheus]
+
 volumes:
   pgdata:

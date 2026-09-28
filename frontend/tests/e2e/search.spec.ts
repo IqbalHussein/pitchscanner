@@ -95,3 +95,22 @@ test('the pitch scales to phone width without horizontal scrolling', async ({ pa
 test('the footer credits StatsBomb', async ({ page }) => {
   await expect(page.getByRole('contentinfo')).toContainText('StatsBomb');
 });
+
+test('an explicit "all" clears a competition filter', async ({ page }) => {
+  const all = page.getByTestId('competition-all');
+  // Nothing selected is already "all", and the control says so.
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
+
+  await page.getByTestId('competition-select').selectOption(['9']);
+  await expect(all).toHaveAttribute('aria-pressed', 'false');
+  const narrowed = await page.getByTestId('result').first().innerText();
+
+  await all.click();
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('competition-select')).toHaveValues([]);
+  // Unconstrained again, so the top result comes from the whole corpus rather
+  // than staying pinned to the one competition.
+  await expect(async () => {
+    expect(await page.getByTestId('result').first().innerText()).not.toBe(narrowed);
+  }).toPass();
+});

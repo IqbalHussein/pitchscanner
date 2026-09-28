@@ -112,7 +112,23 @@ export function FilterBar({
     <section className="filter-bar" aria-label="Filters">
       <div className="filter-row">
         <label className="field">
-          <span>Competition</span>
+          <span className="field-head">
+            Competition
+            {/* An empty multi-select already means "no constraint", but nothing on
+                screen says so and there is no obvious way back once something is
+                selected - ctrl-clicking to deselect is not a discoverable UI. */}
+            <button
+              type="button"
+              className={`reset ${filters.competition_ids.length ? '' : 'active'}`}
+              onClick={() =>
+                onFiltersChange({ ...filters, competition_ids: [], season_ids: [] })
+              }
+              aria-pressed={filters.competition_ids.length === 0}
+              data-testid="competition-all"
+            >
+              all
+            </button>
+          </span>
           <select
             multiple
             size={3}
@@ -131,7 +147,18 @@ export function FilterBar({
         </label>
 
         <label className="field">
-          <span>Season</span>
+          <span className="field-head">
+            Season
+            <button
+              type="button"
+              className={`reset ${filters.season_ids.length ? '' : 'active'}`}
+              onClick={() => onFiltersChange({ ...filters, season_ids: [] })}
+              aria-pressed={filters.season_ids.length === 0}
+              data-testid="season-all"
+            >
+              all
+            </button>
+          </span>
           <select
             multiple
             size={3}

@@ -122,6 +122,36 @@ select[multiple] {
   padding: 4px;
 }
 
+/* "all" reads as the current state when nothing is selected, and as a button to
+   get back there when something is. */
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reset {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 1px 8px;
+}
+
+.reset:hover {
+  color: var(--text);
+}
+
+.reset.active {
+  border-color: transparent;
+  color: var(--text);
+  cursor: default;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

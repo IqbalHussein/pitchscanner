@@ -37,20 +37,18 @@ STOPWORDS = frozenset(
         "player", "players", "side", "game", "games", "match", "matches", "involving", "against",
         "facing", "vs", "versus", "attack", "attacks", "attacking", "defending", "possession",
         "ball", "rounds", "round", "stage", "stages", "minute", "minutes", "half", "last", "first",
-        "second", "defends", "attacks",
+        "second", "defends",
     }
 )
 #: Words after a team that say which side of the ball it is on.
 _DEFENDING_AFTER = frozenset({"defending", "defends"})
-_ATTACKING_AFTER = frozenset({"attacking", "attacks", "attack"})
 
-_NUMBER_WORDS = {
-    w: n
-    for n, w in enumerate(
-        "zero one two three four five six seven eight nine ten eleven twelve thirteen "
-        "fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()
-    )
-}
+_UNITS = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+    "nineteen", "twenty",
+)
+_NUMBER_WORDS = {w: n for n, w in enumerate(_UNITS)}
 _NUMBER_WORDS.update({"thirty": 30, "forty": 40, "fifty": 50, "sixty": 60})
 _NUM = (
     r"(?:\d{1,3}|(?:twenty|thirty|forty|fifty|sixty)(?: (?:one|two|three|four|five|six|seven"
@@ -91,12 +89,17 @@ _SEMI_OR_QUARTER_RE = re.compile(r"\b(semi|quarter|last 16|round of 16)\b")
 Span = tuple[int, int]
 
 
-def _occurrences(text: str, needle: str) -> list[Span]:
-    """Every place `needle` occurs in `text`, as (start, end) character offsets."""
+def _occurrences(text: str, needle: str, *, words: bool = False) -> list[Span]:
+    """Every place `needle` occurs in `text`, as (start, end) character offsets.
+
+    With `words`, only whole words count: "losing" must not be found in "closing".
+    """
 
     out: list[Span] = []
     if not needle:
         return out
+    if words:
+        return [m.span() for m in re.finditer(rf"\b{re.escape(needle)}\b", text)]
     i = text.find(needle)
     while i != -1:
         out.append((i, i + len(needle)))
@@ -174,7 +177,7 @@ class FilterParser:
         groups: dict[str, list[str]] = self.alias_file.get("game_state") or {}
         for state, phrases in groups.items():
             for phrase in sorted(phrases, key=len, reverse=True):
-                if spans := _occurrences(text, normalise(str(phrase))):
+                if spans := _occurrences(text, normalise(str(phrase)), words=True):
                     return cast(GameState, state), spans
         return None, []
 
@@ -281,16 +284,16 @@ class FilterParser:
             (_FINAL_THIRD_RE, "final third", FINAL_THIRD_ZONES),
             (_BOX_RE, "penalty area", PENALTY_AREA_ZONES),
         ):
-            if m := pattern.search("".join(masked)):
+            if hit := pattern.search("".join(masked)):
                 ball_zone_ids = list(zones)
-                zone_chip = (label, m.span())
-                consume([m.span()])
+                zone_chip = (label, hit.span())
+                consume([hit.span()])
                 break
         venue: Venue = "any"
         venue_span: Span | None = None
-        if m := _VENUE_RE.search("".join(masked)):
-            venue = "away" if m.group(1) in ("away", "away from home", "on the road") else "home"
-            venue_span = m.span()
+        if hit := _VENUE_RE.search("".join(masked)):
+            venue = "away" if hit.group(1) in ("away", "away from home", "on the road") else "home"
+            venue_span = hit.span()
             consume([venue_span])
         stage_hits = self._stages("".join(masked))
         stages = [stage for stage, _ in stage_hits]
@@ -384,10 +387,10 @@ class FilterParser:
                 # opponent is named in the warning instead of silently dropped.
                 dropped = [team_chips[t] for t in defending]
                 chips = [c for c in chips if all(c is not d[0] for d in dropped)]
-                names = ", ".join(d[1] for d in dropped)
+                opponent = ", ".join(d[1] for d in dropped)
                 kept = ", ".join(team_chips[t][1] for t in attacking)
                 warnings.append(
-                    f"Filtering on {kept} in possession; the opponent ({names}) "
+                    f"Filtering on {kept} in possession; the opponent ({opponent}) "
                     "cannot be filtered separately."
                 )
                 team_ids = attacking

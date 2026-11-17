@@ -106,6 +106,24 @@ def test_filters_push_down_to_sql(pg_store: PostgresStore) -> None:
     assert 0 <= losing <= total
 
 
+def test_venue_filter_is_backfilled_and_agrees_with_the_matches_table(
+    pg_store: PostgresStore,
+) -> None:
+    version = get_encoder("E1").version
+    total = pg_store.count_matching(version, None)
+    home = pg_store.count_matching(version, Filters(venue="home"))
+    away = pg_store.count_matching(version, Filters(venue="away"))
+    assert 0 < home < total
+    assert home + away == total
+    with pg_store.conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) AS n FROM frames f JOIN matches m USING (match_id)"
+            " WHERE (f.possession_team_id = m.home_team_id) <> f.possession_is_home"
+        )
+        row = cur.fetchone()
+    assert row is not None and row["n"] == 0
+
+
 def test_search_service_against_postgres(pg_store: PostgresStore) -> None:
     service = SearchService(pg_store, Settings(store="postgres", dsn=pg_store.dsn))
     outcome = service.search(
@@ -160,6 +178,9 @@ _FILTER_CASES = [
     Filters(stages=["group"]),
     Filters(team_role="attacking"),
     Filters(minute_range=(0, 45), game_state="winning"),
+    Filters(venue="home"),
+    Filters(venue="away"),
+    Filters(venue="home", game_state="losing", minute_range=(45, 98)),
     Filters(competition_ids=[999999]),
 ]
 

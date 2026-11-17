@@ -124,7 +124,12 @@ jobs:
           assert counts.frames > 0, "no frames ingested from the real dataset"
           service = SearchService(store, settings=settings)
           response = service.search(
-              SearchRequest(ball=PointIn(x=90.0, y=40.0), players=[], k=10)
+              SearchRequest(
+                  ball=PointIn(x=90.0, y=40.0),
+                  attackers=[PointIn(x=92.0, y=38.0)],
+                  defenders=[PointIn(x=100.0, y=40.0)],
+                  k=10,
+              )
           )
           assert response.results, "real data ingested but search returned nothing"
           print(f"{counts.frames} frames, {len(response.results)} results")

@@ -160,3 +160,14 @@ def test_meta_reports_attribution(api_client) -> None:
     body = api_client.get("/v1/meta").json()
     assert "StatsBomb" in body["attribution"]
     assert body["counts"]["frames"] > 0
+
+
+@pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity", "1e999"])
+def test_non_finite_coordinates_are_a_422_not_a_500(api_client, bad: str) -> None:
+    # Raw text, because httpx refuses to encode NaN; a browser or curl will not.
+    body = '{"ball": {"x": %s, "y": 22}, "attackers": [{"x": 86, "y": 20}]}' % bad
+    response = api_client.post(
+        "/v1/search", content=body, headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "ball", "x"]

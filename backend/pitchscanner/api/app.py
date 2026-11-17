@@ -7,7 +7,11 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import math
+
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -112,8 +116,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
         request_id_var.reset(token)
         return response
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # FastAPI's default handler echoes the offending input back, and a NaN or
+        # an infinity in it makes the JSON encoder raise: a 422 became a 500.
+        return JSONResponse(
+            status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))}
+        )
+
     app.include_router(router)
     return app
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 app = create_app()

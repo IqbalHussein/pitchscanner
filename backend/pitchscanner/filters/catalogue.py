@@ -26,12 +26,45 @@ _GENERIC_WORDS = frozenset(
 )
 
 
-def normalise(text: str) -> str:
-    """Lowercase, strip accents and collapse whitespace. One definition, used everywhere."""
+_PUNCTUATION_AS_SPACE = frozenset("-.,;:!?()")
 
-    decomposed = unicodedata.normalize("NFKD", text.lower())
-    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return " ".join(stripped.replace("-", " ").replace(".", " ").split())
+
+def normalise_aligned(text: str) -> tuple[str, list[int]]:
+    """`normalise`, plus for each output character the index it came from in `text`.
+
+    The filter parser uses the map to turn a phrase it found in the normalised
+    text back into the exact substring the user typed.
+    """
+
+    chars: list[str] = []
+    origin: list[int] = []
+    for i, original in enumerate(text):
+        for c in unicodedata.normalize("NFKD", original.lower()):
+            if unicodedata.combining(c):
+                continue
+            chars.append(" " if c in _PUNCTUATION_AS_SPACE else c)
+            origin.append(i)
+    out: list[str] = []
+    out_origin: list[int] = []
+    pending_space = False
+    for c, o in zip(chars, origin, strict=True):
+        if c.isspace():
+            pending_space = bool(out)
+            continue
+        if pending_space:
+            out.append(" ")
+            out_origin.append(o)
+            pending_space = False
+        out.append(c)
+        out_origin.append(o)
+    return "".join(out), out_origin
+
+
+def normalise(text: str) -> str:
+    """Lowercase, strip accents and punctuation, collapse whitespace. One definition,
+    used everywhere."""
+
+    return normalise_aligned(text)[0]
 
 
 #: Parsed YAML: nested lists and dicts of strings and ints. Typing it more

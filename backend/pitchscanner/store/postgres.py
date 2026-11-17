@@ -369,6 +369,16 @@ class PostgresStore:
         perfectly healthy.
         """
 
+        return sum(self.vector_counts().values())
+
+    @property
+    def effective_index_kind(self) -> str | None:
+        # The configured index is what Postgres actually uses.
+        return None
+
+    def vector_counts(self) -> dict[str, int]:
+        """Vectors per encoding version, read from the per-encoding tables."""
+
         with self.conn.cursor() as cur:
             cur.execute(
                 """
@@ -379,15 +389,17 @@ class PostgresStore:
                 """
             )
             tables = [str(r["table_name"]) for r in cur.fetchall()]
-            if not tables:
-                return 0
-            query = sql.SQL(" UNION ALL ").join(
-                sql.SQL("SELECT count(*) AS n FROM {}").format(sql.Identifier(name))
-                for name in tables
-            )
-            cur.execute(sql.SQL("SELECT sum(n)::bigint AS total FROM ({}) t").format(query))
-            row = cur.fetchone() or {}
-        return int(row.get("total") or 0)
+            counts: dict[str, int] = {}
+            for name in tables:
+                cur.execute(
+                    sql.SQL(
+                        "SELECT encoding_version, count(*) AS n FROM {} GROUP BY encoding_version"
+                    ).format(sql.Identifier(name))
+                )
+                for row in cur.fetchall():
+                    version = str(row["encoding_version"])
+                    counts[version] = counts.get(version, 0) + int(row["n"])
+        return counts
 
     def match(self, match_id: int) -> MatchRecord | None:
         with self.conn.cursor() as cur:

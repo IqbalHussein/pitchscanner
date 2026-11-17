@@ -32,4 +32,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz').status==200 else 1)"
 
-CMD ["uvicorn", "pitchscanner.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# The API port is only meant to sit behind a reverse proxy (nginx in
+# docker-compose), so trusting its X-Forwarded-For is the point: without it every
+# client shares the proxy's address and one rate-limit bucket. `*` is acceptable
+# for that topology; narrow FORWARDED_ALLOW_IPS if the port is ever published
+# directly. sh -c so the variable expands; exec so uvicorn is PID 1 and gets signals.
+ENV FORWARDED_ALLOW_IPS="*"
+CMD ["sh", "-c", "exec uvicorn pitchscanner.api.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\""]

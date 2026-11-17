@@ -165,9 +165,60 @@ def test_meta_reports_attribution(api_client) -> None:
 @pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity", "1e999"])
 def test_non_finite_coordinates_are_a_422_not_a_500(api_client, bad: str) -> None:
     # Raw text, because httpx refuses to encode NaN; a browser or curl will not.
-    body = '{"ball": {"x": %s, "y": 22}, "attackers": [{"x": 86, "y": 20}]}' % bad
+    body = '{"ball": {"x": ' + bad + ', "y": 22}, "attackers": [{"x": 86, "y": 20}]}'
     response = api_client.post(
         "/v1/search", content=body, headers={"content-type": "application/json"}
     )
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "ball", "x"]
+
+
+def test_window_s_other_than_the_precomputed_one_is_rejected(api_client) -> None:
+    payload = {**SKETCH, "options": {"window_s": 60}}
+    response = api_client.post("/v1/search", json=payload)
+    assert response.status_code == 422
+    assert "15s window" in response.json()["detail"]
+
+
+def test_window_s_omitted_or_matching_is_accepted(api_client) -> None:
+    assert api_client.post("/v1/search", json=SKETCH).status_code == 200
+    payload = {**SKETCH, "options": {"window_s": 15.0}}
+    assert api_client.post("/v1/search", json=payload).status_code == 200
+
+
+def test_search_server_timing_has_every_stage_and_total(api_client) -> None:
+    payload = {**SKETCH, "k": 7}
+    header = api_client.post("/v1/search", json=payload).headers["server-timing"]
+    for stage in ("encode", "search", "dedup", "aggregate", "total"):
+        assert f"{stage};dur=" in header
+    assert "cache;desc=hit" not in header
+    cached = api_client.post("/v1/search", json=payload).headers["server-timing"]
+    assert "cache;desc=hit" in cached
+    assert "total;dur=" in cached
+
+
+def test_server_timing_total_on_routes_without_a_breakdown(api_client) -> None:
+    header = api_client.get("/healthz").headers["server-timing"]
+    assert header.startswith("total;dur=")
+
+
+def test_meta_reports_exact_index_on_the_memory_store(api_client) -> None:
+    assert api_client.get("/v1/meta").json()["index_kind"] == "exact"
+
+
+def test_readyz_does_not_leak_the_exception(api_client, monkeypatch) -> None:
+    state = api_client.app.state.app_state
+
+    def boom():
+        raise RuntimeError("password=hunter2 host=db.internal")
+
+    monkeypatch.setattr(state.store, "counts", boom)
+    response = api_client.get("/readyz")
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable", "error": "store unavailable"}
+
+
+def test_vector_counts_per_encoding(fixture_store) -> None:
+    counts = fixture_store.vector_counts()
+    assert counts
+    assert sum(counts.values()) == fixture_store.counts().vectors

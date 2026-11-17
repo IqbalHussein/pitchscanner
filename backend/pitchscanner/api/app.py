@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-
-import math
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -49,8 +48,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
         state: AppState = app.state.app_state
         counts = state.store.counts()
         entities = state.filters.warm()
-        for version, _ in getattr(state.store, "_vectors", {}).items():
-            metrics.INDEX_VECTORS.labels(encoding_version=version).set(counts.frames)
+        for version, n in state.store.vector_counts().items():
+            metrics.INDEX_VECTORS.labels(encoding_version=version).set(n)
         state.ready = True
         log.info("startup", store=cfg.store, entities=entities, **counts.as_dict())
         yield
@@ -105,7 +104,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
             status=str(response.status_code),
         ).observe(elapsed)
         response.headers["x-request-id"] = request_id
-        response.headers["server-timing"] = f"total;dur={elapsed * 1000:.1f}"
+        total = f"total;dur={elapsed * 1000:.1f}"
+        existing = response.headers.get("server-timing")
+        response.headers["server-timing"] = f"{existing}, {total}" if existing else total
         log.info(
             "request",
             method=request.method,

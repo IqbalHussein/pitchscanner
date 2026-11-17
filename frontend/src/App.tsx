@@ -86,6 +86,9 @@ export default function App() {
       )
       .then((result) => {
         setResponse(result);
+        setSelected((current) =>
+          current && !result.results.some((r) => r.event_id === current) ? null : current,
+        );
         if (result.parsed_filters) setParsed(result.parsed_filters);
         setError(null);
       })
@@ -93,7 +96,10 @@ export default function App() {
         if (cause instanceof DOMException && cause.name === 'AbortError') return;
         setError(cause instanceof ApiError ? cause.message : 'Search failed. Try again.');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        // An aborted request must not clear the spinner of the search that replaced it.
+        if (inFlight.current === controller) setLoading(false);
+      });
   }, []);
 
   // Debounced: dragging a player fires a search per frame otherwise.
@@ -138,12 +144,17 @@ export default function App() {
       setTrail(null);
       return;
     }
+    let cancelled = false;
     Promise.all([api.situation(selected), api.sequence(selected)])
       .then(([situation, seq]) => {
+        if (cancelled) return;
         setDetail(situation);
         setSequence(seq);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
 
   // --- editing ------------------------------------------------------------

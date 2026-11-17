@@ -3,43 +3,43 @@
     "counter_3v2": {
       "nonzero": 124,
       "norm": 1.803321,
-      "sha256": "925b2bf75acbca58",
+      "sha256": "982f330ddd92ed1c",
       "sum": 15.140156
     },
     "dim": 292,
     "low_block": {
       "nonzero": 137,
       "norm": 1.809696,
-      "sha256": "20024671f0de60eb",
+      "sha256": "0a429e185eabacbc",
       "sum": 15.074972
     },
     "metric": "cosine",
     "wide_overload": {
       "nonzero": 116,
       "norm": 1.823889,
-      "sha256": "6cef8789019cb1f9",
-      "sum": 14.981682
+      "sha256": "1694c86e24353937",
+      "sum": 14.981683
     }
   },
   "E1": {
     "counter_3v2": {
       "nonzero": 57,
       "norm": 1.685387,
-      "sha256": "e50a7d13a9d0e62d",
+      "sha256": "466633f60e1de7f1",
       "sum": 7.954849
     },
     "dim": 72,
     "low_block": {
       "nonzero": 60,
       "norm": 1.681187,
-      "sha256": "61f7dc7a9cf5c99f",
+      "sha256": "1477c6878866cf59",
       "sum": 7.126062
     },
     "metric": "cosine",
     "wide_overload": {
       "nonzero": 55,
       "norm": 1.760269,
-      "sha256": "06cb80af143feae5",
+      "sha256": "c521796d125b5973",
       "sum": 7.146389
     }
   },
@@ -47,21 +47,21 @@
     "counter_3v2": {
       "nonzero": 16,
       "norm": 1.605194,
-      "sha256": "fd8b1a969aae3602",
+      "sha256": "b7c8fa69dcb44068",
       "sum": 4.921321
     },
     "dim": 18,
     "low_block": {
       "nonzero": 16,
       "norm": 2.020877,
-      "sha256": "1d4b624c5236b0c2",
+      "sha256": "391ba191c558d1c7",
       "sum": 6.681096
     },
     "metric": "l2",
     "wide_overload": {
       "nonzero": 16,
       "norm": 1.556647,
-      "sha256": "5386a16e9f5dae9f",
+      "sha256": "4ae9d2c0bb619fbb",
       "sum": 4.240378
     }
   }

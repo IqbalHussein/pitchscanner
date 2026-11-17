@@ -40,6 +40,8 @@ def matches(meta: FrameMeta, filters: Filters | None) -> bool:
         lo, hi = filters.minute_range
         if not (lo <= meta.minute <= hi):
             return False
+    if filters.venue != "any" and meta.possession_is_home != (filters.venue == "home"):
+        return False
     if filters.stages and meta.stage not in filters.stages:
         return False
     return not (filters.ball_zone_ids and meta.zone_id not in filters.ball_zone_ids)
@@ -77,6 +79,9 @@ def to_sql(filters: Filters | None, params: dict[str, object]) -> str:
     if filters.minute_range is not None:
         clauses.append("f.minute BETWEEN %(minute_lo)s AND %(minute_hi)s")
         params["minute_lo"], params["minute_hi"] = filters.minute_range
+    if filters.venue != "any":
+        clauses.append("f.possession_is_home = %(possession_is_home)s")
+        params["possession_is_home"] = filters.venue == "home"
     if filters.stages:
         clauses.append("f.stage = ANY(%(stages)s)")
         params["stages"] = list(filters.stages)

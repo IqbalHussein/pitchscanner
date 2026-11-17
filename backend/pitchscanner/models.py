@@ -19,6 +19,7 @@ from pitchscanner.geometry import (
 GameState = Literal["any", "winning", "drawing", "losing"]
 Role = Literal["any", "attacking", "defending"]
 Stage = Literal["group", "knockout", "final", "regular"]
+Venue = Literal["any", "home", "away"]
 MAX_PER_SIDE = 11
 
 
@@ -137,6 +138,8 @@ class Filters(BaseModel):
     minute_range: tuple[int, int] | None = None
     stages: list[Stage] = Field(default_factory=list)
     ball_zone_ids: list[int] = Field(default_factory=list)
+    #: Whether the team in possession at that frame was the match's home or away side.
+    venue: Venue = "any"
 
     def is_empty(self) -> bool:
         return self == Filters()
@@ -241,6 +244,9 @@ class Chip(BaseModel):
     label: str
     value: str
     ids: list[int] = Field(default_factory=list)
+    #: The exact substring of the filter text this chip came from, so removing the
+    #: chip can remove it from the text box. Null for chips the text did not produce.
+    span: str | None = None
 
 
 class ParsedFilters(BaseModel):

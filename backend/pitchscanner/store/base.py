@@ -45,6 +45,8 @@ class FrameMeta:
     stage: str
     game_state: str
     zone_id: int
+    #: The team in possession was the match's home side.
+    possession_is_home: bool
 
 
 class CoverageRow(TypedDict):

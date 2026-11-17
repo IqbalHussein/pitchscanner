@@ -119,6 +119,10 @@ Coordinate = Annotated[float, Field(ge=0.0)]
 
 
 class PointIn(BaseModel):
+    # NaN passes no ge/le check meaningfully and cannot be echoed back in a JSON
+    # error body, so reject non-finite numbers at the door.
+    model_config = ConfigDict(allow_inf_nan=False)
+
     x: Coordinate = Field(le=PITCH_LENGTH, description="0 at own goal line, 120 at the target goal")
     y: Coordinate = Field(le=PITCH_WIDTH)
     keeper: bool = False
@@ -150,7 +154,7 @@ class Filters(BaseModel):
 
 
 class SearchOptions(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     mirror: bool = True
     encoding: str = "E1"

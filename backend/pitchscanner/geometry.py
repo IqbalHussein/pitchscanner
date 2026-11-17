@@ -142,9 +142,8 @@ def zone_id(x: float, y: float) -> int:
 
 def zone_label(zone: int) -> str:
     row, col = divmod(zone, ZONE_COLS)
-    thirds = ("defensive", "def. middle", "middle", "att. middle", "attacking", "final")
     lanes = ("left", "centre", "right")
-    return f"{thirds[col]} third, {lanes[row]} lane"
+    return f"zone {col + 1} of {ZONE_COLS} from own goal, {lanes[row]} lane"
 
 
 def in_penalty_area(x: float, y: float) -> bool:

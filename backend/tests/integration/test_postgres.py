@@ -230,3 +230,11 @@ def test_exact_search_agrees_with_the_memory_store(
             assert [h.event_id for h in pg_hits] == [h.event_id for h in mem_hits]
             for a, b in zip(pg_hits, mem_hits, strict=True):
                 assert a.distance == pytest.approx(b.distance, abs=1e-5)
+
+
+def test_vector_counts_per_encoding(pg_store: PostgresStore) -> None:
+    counts = pg_store.vector_counts()
+    assert counts
+    assert all(n > 0 for n in counts.values())
+    assert sum(counts.values()) == pg_store.counts().vectors
+    assert pg_store.effective_index_kind is None

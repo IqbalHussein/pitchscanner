@@ -294,6 +294,17 @@
             },
             "type": "array",
             "title": "Ids"
+          },
+          "span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span"
           }
         },
         "type": "object",
@@ -441,6 +452,16 @@
             },
             "type": "array",
             "title": "Ball Zone Ids"
+          },
+          "venue": {
+            "type": "string",
+            "enum": [
+              "any",
+              "home",
+              "away"
+            ],
+            "title": "Venue",
+            "default": "any"
           }
         },
         "additionalProperties": false,

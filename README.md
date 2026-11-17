@@ -13,7 +13,8 @@ was lost, how often the ball reached the box. Every number comes with a
 confidence interval and a comparison against the baseline for that part of the
 pitch, so "this shape is dangerous" is a claim you can check rather than a vibe.
 Filters are written in plain language ("Bayern at home, last fifteen minutes,
-trailing"), parsed by rules first and only then, optionally, by a model.
+trailing", where "at home" means the team in possession was the home side),
+parsed by rules first and only then, optionally, by a model.
 
 ## Contents
 
@@ -207,12 +208,30 @@ step with the database. pgvector stays. `pip install -e "backend[faiss]"` to rep
 table; without it the report says the comparison is missing rather than omitting
 the section.
 
-**Natural-language filters.** 145 hand-labelled phrases in
-[`data/eval/filter-phrases.jsonl`](data/eval/filter-phrases.jsonl); the rule
-parser scores **1.000 exact match** with per-field f1 of 1.000 across all nine
-filter fields (`pytest tests/unit/test_filter_parsing.py -s` prints the table).
-The LLM fallback is off by default and is only consulted for phrases the rules
-leave unresolved.
+**Natural-language filters.** Two phrase sets, and they are not equally
+trustworthy. [`data/eval/filter-phrases.jsonl`](data/eval/filter-phrases.jsonl)
+has 145 phrases that I wrote alongside the parser, so its score says the parser
+does what I had in mind, not that it generalises: **0.993 exact match** (144 of
+145), per-field f1 of at least 0.976 across the ten filter fields. The one miss
+is deliberate: "Germany against Spain" used to be labelled as both teams
+defending, which cannot be true; it now filters on Germany in possession and
+warns that the opponent cannot be filtered separately. The second set,
+[`data/eval/filter-phrases-heldout.jsonl`](data/eval/filter-phrases-heldout.jsonl),
+has 37 phrases (venue, "final third", "in the box", spelled-out and bounded minute
+ranges, bare game states, "Bayern defending") taken from phrasings the first
+version of the parser got wrong, and the test requires every one to parse
+exactly: **37 of 37**. It is a regression set rather than an independent
+estimate, because the parser was then fixed until it passed; a number from
+phrases nobody had looked at would need someone else to write them. Zones are
+approximations: the grid is 6 x 3, so "in the box" is the last column (x >= 100)
+rather than the exact penalty area. `pytest tests/unit/test_filter_parsing.py -s`
+prints both tables. The LLM fallback is off by default and is only consulted for
+phrases the rules leave unresolved.
+
+Selected dropdowns beat the text box. When they disagree the response says so
+("Team from the text (Spain) is overridden by the selected filter") and drops the
+text's chip instead of showing a filter that is not applied. Every chip records
+the text it was read from, so removing it removes those words too.
 
 **Retrieval quality.** `make eval-pool` builds a 200-query blind pool for hand
 labelling. Until `bench/reports/eval-labels.jsonl` exists there are no

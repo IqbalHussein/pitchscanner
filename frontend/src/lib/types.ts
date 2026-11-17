@@ -26,6 +26,7 @@ export interface SketchPlayer extends PointIn {
 export type GameState = 'any' | 'winning' | 'drawing' | 'losing';
 export type Role = 'any' | 'attacking' | 'defending';
 export type Stage = 'group' | 'knockout' | 'final' | 'regular';
+export type Venue = 'any' | 'home' | 'away';
 
 export interface Filters {
   competition_ids: number[];
@@ -38,6 +39,7 @@ export interface Filters {
   minute_range: [number, number] | null;
   stages: Stage[];
   ball_zone_ids: number[];
+  venue: Venue;
 }
 
 export const emptyFilters = (): Filters => ({
@@ -51,6 +53,7 @@ export const emptyFilters = (): Filters => ({
   minute_range: null,
   stages: [],
   ball_zone_ids: [],
+  venue: 'any',
 });
 
 export interface Chip {
@@ -58,6 +61,8 @@ export interface Chip {
   label: string;
   value: string;
   ids: number[];
+  /** The exact text this chip was read from, when it came from the text box. */
+  span?: string | null;
 }
 
 export interface ParsedFilters {

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -63,7 +64,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     uvicorn.run(
-        "pitchscanner.api.app:app", host=args.host, port=args.port, reload=args.reload
+        "pitchscanner.api.app:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        proxy_headers=True,
+        forwarded_allow_ips=os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1"),
     )
     return 0
 

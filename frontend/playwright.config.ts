@@ -28,12 +28,16 @@ export default defineConfig({
           command:
             'cd ../backend && PITCHSCANNER_STORE=memory python -m pitchscanner.cli --store memory serve --port 8000',
           url: 'http://127.0.0.1:8000/readyz',
+          stdout: 'pipe',
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
         },
+        // vite binds `localhost`, which can resolve to ::1 only on CI runners,
+        // while Playwright polls 127.0.0.1, so pin the host to match the url.
         {
-          command: 'npm run preview',
+          command: 'npm run preview -- --host 127.0.0.1 --strictPort',
           url: 'http://127.0.0.1:4173',
+          stdout: 'pipe',
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
         },

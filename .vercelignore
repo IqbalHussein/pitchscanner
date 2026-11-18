@@ -1,0 +1,23 @@
+# Uploaded by `vercel deploy`; this file replaces .gitignore for CLI uploads,
+# so .data/memory-store.pkl (gitignored) is deliberately NOT listed here.
+.git
+.venv
+.claude
+.github
+**/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+frontend/src/lib/api-types.ts
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.vercel
+.env
+bench
+docs
+ops
+scripts
+backend/tests
+*.pdf

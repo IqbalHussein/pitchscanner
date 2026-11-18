@@ -92,6 +92,22 @@ make migrate
 make ingest-real
 ```
 
+## Deploying to Vercel
+
+`vercel.json`, `api/index.py` and the root `requirements.txt` deploy the app as
+one Vercel project: the Vite build is served statically and the FastAPI app runs
+as a single Python function behind rewrites for `/v1/*`, `/healthz`, `/readyz`,
+`/metrics`, `/docs` and `/openapi.json`. The function uses the in-memory store
+on the fixture data only (no database), loading `.data/memory-store.pkl`, which
+the CLI uploads even though it is gitignored (`.vercelignore` replaces
+`.gitignore` for uploads). If the snapshot is absent, the function rebuilds it
+from `data/fixtures` into `/tmp` on cold start. To redeploy:
+
+```bash
+make ingest               # refresh .data/memory-store.pkl
+vercel deploy --prod      # from the repo root, linked to the project
+```
+
 ## The three encodings
 
 A situation has no natural order — eleven players are a *set*, not a list — so

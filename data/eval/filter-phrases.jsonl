@@ -100,7 +100,7 @@
 {"text": "Leverkusen when losing in the last 15 minutes", "filters": {"team_ids": [904], "team_role": "attacking", "game_state": "losing", "minute_range": [75, 98]}}
 {"text": "Spain in the second half", "filters": {"team_ids": [772], "team_role": "attacking", "minute_range": [45, 98]}}
 {"text": "Spain at the Euros", "filters": {"competition_ids": [55], "team_ids": [772], "team_role": "attacking"}}
-{"text": "Germany against Spain", "filters": {"team_ids": [914, 772], "team_role": "defending"}}
+{"text": "Germany against Spain", "filters": {"team_ids": [914], "team_role": "attacking"}}
 {"text": "Bayern while winning in the Bundesliga", "filters": {"competition_ids": [9], "team_ids": [169], "team_role": "attacking", "game_state": "winning"}}
 {"text": "Euro 2024 knockouts when level", "filters": {"competition_ids": [55], "season_ids": [282], "stages": ["knockout"], "game_state": "drawing"}}
 {"text": "involving Wirtz when losing", "filters": {"player_ids": [1234], "player_role": "attacking", "game_state": "losing"}}

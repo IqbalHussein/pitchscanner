@@ -95,7 +95,7 @@ add("Leverkusen when losing in the last 15 minutes", team_ids=[LEV], team_role="
     game_state="losing", minute_range=[75, 98])
 add("Spain in the second half", team_ids=[SPAIN], team_role="attacking", minute_range=[45, 98])
 add("Spain at the Euros", competition_ids=[EURO], team_ids=[SPAIN], team_role="attacking")
-add("Germany against Spain", team_ids=[GERMANY, SPAIN], team_role="defending")
+add("Germany against Spain", team_ids=[GERMANY], team_role="attacking")
 add("Bayern while winning in the Bundesliga", competition_ids=[BUNDES], team_ids=[BAYERN],
     team_role="attacking", game_state="winning")
 add("Euro 2024 knockouts when level", competition_ids=[EURO], season_ids=[S2024],

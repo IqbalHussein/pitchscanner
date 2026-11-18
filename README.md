@@ -211,11 +211,12 @@ the section.
 **Natural-language filters.** Two phrase sets, and they are not equally
 trustworthy. [`data/eval/filter-phrases.jsonl`](data/eval/filter-phrases.jsonl)
 has 145 phrases that I wrote alongside the parser, so its score says the parser
-does what I had in mind, not that it generalises: **0.993 exact match** (144 of
-145), per-field f1 of at least 0.976 across the ten filter fields. The one miss
-is deliberate: "Germany against Spain" used to be labelled as both teams
-defending, which cannot be true; it now filters on Germany in possession and
-warns that the opponent cannot be filtered separately. The second set,
+does what I had in mind, not that it generalises: **1.000 exact match** (145 of
+145), per-field f1 of 1.000 across the ten filter fields. One label changed
+along the way: "Germany against Spain" used to be labelled as both teams
+defending, which cannot be true, and I relabelled it to Germany in possession,
+which is how the parser reads it (it also warns that the opponent cannot be
+filtered separately). The second set,
 [`data/eval/filter-phrases-heldout.jsonl`](data/eval/filter-phrases-heldout.jsonl),
 has 37 phrases (venue, "final third", "in the box", spelled-out and bounded minute
 ranges, bare game states, "Bayern defending") taken from phrasings the first

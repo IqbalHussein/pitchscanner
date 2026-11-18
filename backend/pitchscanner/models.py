@@ -19,6 +19,7 @@ from pitchscanner.geometry import (
 GameState = Literal["any", "winning", "drawing", "losing"]
 Role = Literal["any", "attacking", "defending"]
 Stage = Literal["group", "knockout", "final", "regular"]
+Venue = Literal["any", "home", "away"]
 MAX_PER_SIDE = 11
 
 
@@ -119,6 +120,10 @@ Coordinate = Annotated[float, Field(ge=0.0)]
 
 
 class PointIn(BaseModel):
+    # NaN passes no ge/le check meaningfully and cannot be echoed back in a JSON
+    # error body, so reject non-finite numbers at the door.
+    model_config = ConfigDict(allow_inf_nan=False)
+
     x: Coordinate = Field(le=PITCH_LENGTH, description="0 at own goal line, 120 at the target goal")
     y: Coordinate = Field(le=PITCH_WIDTH)
     keeper: bool = False
@@ -137,6 +142,8 @@ class Filters(BaseModel):
     minute_range: tuple[int, int] | None = None
     stages: list[Stage] = Field(default_factory=list)
     ball_zone_ids: list[int] = Field(default_factory=list)
+    #: Whether the team in possession at that frame was the match's home or away side.
+    venue: Venue = "any"
 
     def is_empty(self) -> bool:
         return self == Filters()
@@ -150,7 +157,7 @@ class Filters(BaseModel):
 
 
 class SearchOptions(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     mirror: bool = True
     encoding: str = "E1"
@@ -241,6 +248,9 @@ class Chip(BaseModel):
     label: str
     value: str
     ids: list[int] = Field(default_factory=list)
+    #: The exact substring of the filter text this chip came from, so removing the
+    #: chip can remove it from the text box. Null for chips the text did not produce.
+    span: str | None = None
 
 
 class ParsedFilters(BaseModel):

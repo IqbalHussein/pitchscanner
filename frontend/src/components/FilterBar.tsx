@@ -7,9 +7,20 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import type { Filters, FiltersResponse, ParsedFilters } from '../lib/types';
+import type { Chip, Filters, FiltersResponse, ParsedFilters } from '../lib/types';
 
 const DEBOUNCE_MS = 300;
+
+/** Cut every occurrence of `span` out of `text` and tidy what it leaves behind. */
+export function removeSpan(text: string, span: string): string {
+  return text
+    .split(span)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+,/g, ',')
+    .replace(/,(\s*,)+/g, ',')
+    .replace(/^[\s,]+|[\s,]+$/g, '');
+}
 
 export interface FilterBarProps {
   coverage: FiltersResponse | null;
@@ -90,7 +101,8 @@ export function FilterBar({
       .map((o) => Number(o.value))
       .filter((v) => Number.isFinite(v));
 
-  const removeChip = (field: string, ids: number[]) => {
+  const removeChip = (chip: Chip) => {
+    const { field, ids, span } = chip;
     const next = { ...filters };
     if (field === 'competition')
       next.competition_ids = filters.competition_ids.filter((id) => !ids.includes(id));
@@ -101,11 +113,18 @@ export function FilterBar({
       next.player_ids = filters.player_ids.filter((id) => !ids.includes(id));
     if (field === 'game_state') next.game_state = 'any';
     if (field === 'minute_range') next.minute_range = null;
-    if (field === 'stage') next.stages = [];
+    if (field === 'stage') next.stages = filters.stages.filter((s) => s !== chip.value);
+    if (field === 'venue') next.venue = 'any';
+    if (field === 'ball_zone') next.ball_zone_ids = [];
     onFiltersChange(next);
-    // The chip came from the text box, so the text has to change too or the next
-    // keystroke would bring it straight back.
-    onParsed(parsed ? { ...parsed, chips: parsed.chips.filter((c) => c.field !== field) } : null);
+    // The text box is re-parsed on every search, so a chip that came from it only
+    // stays gone if the words that produced it go too.
+    if (span) onFilterTextChange(removeSpan(filterText, span));
+    onParsed(
+      parsed
+        ? { ...parsed, chips: parsed.chips.filter((c) => c.field !== field || c.value !== chip.value) }
+        : null,
+    );
   };
 
   return (
@@ -197,7 +216,7 @@ export function FilterBar({
             <button
               key={`${chip.field}-${chip.value}`}
               className="chip"
-              onClick={() => removeChip(chip.field, chip.ids)}
+              onClick={() => removeChip(chip)}
               title="Remove this filter"
             >
               {chip.label}: {chip.value} <span aria-hidden>×</span>

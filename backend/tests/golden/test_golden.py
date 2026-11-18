@@ -73,10 +73,23 @@ def _compare(name: str, payload: dict) -> None:
         if not UPDATE:
             pytest.skip(f"created missing snapshot {path.name}")
         return
-    assert json.loads(path.read_text()) == payload, (
+    assert json.loads(path.read_text()) == _approx(payload), (
         f"{path.name} changed. If this is intentional, rerun with UPDATE_GOLDEN=1 "
         "and commit the diff."
     )
+
+
+def _approx(value: object) -> object:
+    """Floats compare to 1e-5: the last bit of a float32 sum moves between numpy
+    builds and platforms, and that is not a change worth failing a build over."""
+
+    if isinstance(value, float):
+        return pytest.approx(value, abs=1e-5)
+    if isinstance(value, dict):
+        return {k: _approx(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_approx(v) for v in value]
+    return value
 
 
 def test_vectors_for_pinned_situations() -> None:
@@ -89,7 +102,11 @@ def test_vectors_for_pinned_situations() -> None:
             block[name] = {
                 # A digest plus a few summary statistics: enough to catch any real
                 # change without a 292-number diff on every edit.
-                "sha256": hashlib.sha256(vector.tobytes()).hexdigest()[:16],
+                # Hashed after rounding: raw float32 bytes differ in the last
+                # bit across numpy versions (seen on 2.5 vs the CI build).
+                "sha256": hashlib.sha256(
+                    np.round(vector.astype(np.float64), 4).tobytes()
+                ).hexdigest()[:16],
                 "sum": round(float(vector.sum()), 6),
                 "norm": round(float(np.linalg.norm(vector)), 6),
                 "nonzero": int((vector != 0).sum()),

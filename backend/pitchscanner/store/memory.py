@@ -153,6 +153,14 @@ class MemoryStore:
             possessions=len({(f.match_id, f.possession_id) for f in self._frames.values()}),
         )
 
+    @property
+    def effective_index_kind(self) -> str | None:
+        # Brute-force cosine over a matrix, whatever `index_kind` says.
+        return "exact"
+
+    def vector_counts(self) -> dict[str, int]:
+        return {version: len(ids) for version, (ids, _) in self._vectors.items()}
+
     def match(self, match_id: int) -> MatchRecord | None:
         return self._matches.get(match_id)
 

@@ -77,4 +77,5 @@ def frame_meta(
         stage=match.stage,
         game_state=game_state_at(goals, possession_team, event.period, event.ts),
         zone_id=zone_id(frame.ball_x, frame.ball_y),
+        possession_is_home=possession_team == match.home_team_id,
     )

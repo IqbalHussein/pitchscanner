@@ -198,6 +198,11 @@ jobs:
         run: python -m pitchscanner.cli --store memory ingest --fixtures
         env:
           PYTHONPATH: backend
+      - name: Build the frontend
+        # Playwright serves the production bundle with `vite preview`, which hangs
+        # without a dist/ to serve; `make test-e2e` builds first, CI has to as well.
+        working-directory: frontend
+        run: npm run gen:api && npm run build
       - name: Playwright
         working-directory: frontend
         run: npm run test:e2e

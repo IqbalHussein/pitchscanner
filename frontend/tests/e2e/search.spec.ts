@@ -114,3 +114,41 @@ test('an explicit "all" clears a competition filter', async ({ page }) => {
     expect(await page.getByTestId('result').first().innerText()).not.toBe(narrowed);
   }).toPass();
 });
+
+test('removing a chip that came from the text removes the filter', async ({ page }) => {
+  const text = page.getByTestId('filter-text');
+  const chips = page.getByTestId('chips');
+  const results = page.getByTestId('result');
+
+  await text.fill('Spain');
+  await expect(chips).toContainText('Team: Spain');
+  // Narrowed: every result has Spain on the ball.
+  await expect(async () => {
+    const rows = await results.allInnerTexts();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.includes('Spain in possession'))).toBe(true);
+  }).toPass();
+
+  await page.getByRole('button', { name: /Team: Spain/ }).click();
+
+  // The chip stays gone, even after the debounced re-parse of the text box...
+  await expect(text).toHaveValue('');
+  await page.waitForTimeout(600);
+  await expect(chips).toHaveCount(0);
+  // ...and the search is no longer Spain-only.
+  await expect(async () => {
+    const rows = await results.allInnerTexts();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((row) => !row.includes('Spain in possession'))).toBe(true);
+  }).toPass();
+});
+
+test('a venue chip is shown and can be removed', async ({ page }) => {
+  const text = page.getByTestId('filter-text');
+  await text.fill('Spain at home');
+  await expect(page.getByTestId('chips')).toContainText('Venue: home');
+  await page.getByRole('button', { name: /Venue: home/ }).click();
+  await expect(text).toHaveValue('Spain');
+  await expect(page.getByTestId('chips')).not.toContainText('Venue');
+  await expect(page.getByTestId('chips')).toContainText('Team: Spain');
+});

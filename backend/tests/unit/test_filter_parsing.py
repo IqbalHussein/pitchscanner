@@ -17,11 +17,15 @@ from pitchscanner.filters import FilterParser
 from pitchscanner.filters.catalogue import Catalogue
 from pitchscanner.models import Filters
 
-PHRASES = Path(__file__).resolve().parents[3] / "data" / "eval" / "filter-phrases.jsonl"
+EVAL = Path(__file__).resolve().parents[3] / "data" / "eval"
+PHRASES = EVAL / "filter-phrases.jsonl"
+#: Written after the parser, from phrasings it got wrong. Every one must pass.
+HELDOUT = EVAL / "filter-phrases-heldout.jsonl"
 FIELDS = (
     "competition_ids", "season_ids", "team_ids", "team_role", "player_ids",
-    "player_role", "game_state", "minute_range", "stages",
+    "player_role", "game_state", "minute_range", "stages", "venue",
 )
+HELDOUT_FIELDS = (*FIELDS, "ball_zone_ids")
 EXACT_MATCH_TARGET = 0.85
 FIELD_F1_TARGET = 0.85
 #: Competitions the fixture data names but has no 360 frames for. The parser must
@@ -82,8 +86,8 @@ def parser(fixture_store) -> FilterParser:
     return FilterParser(Catalogue.from_entries(entries))
 
 
-def _cases() -> list[dict]:
-    with PHRASES.open(encoding="utf-8") as fh:
+def _cases(path: Path = PHRASES) -> list[dict]:
+    with path.open(encoding="utf-8") as fh:
         return [json.loads(line) for line in fh if line.strip()]
 
 
@@ -102,9 +106,10 @@ def test_phrase_file_is_big_enough() -> None:
     assert len(_cases()) >= 140, "the spec calls for about 150 labelled phrases"
 
 
-def test_rule_parser_accuracy(parser: FilterParser, capsys) -> None:
-    cases = _cases()
-    scores = {field: FieldScore() for field in FIELDS}
+def _score(
+    parser: FilterParser, cases: list[dict], fields: tuple[str, ...], capsys, label: str
+) -> tuple[float, dict[str, FieldScore], list[str]]:
+    scores = {field: FieldScore() for field in fields}
     exact = 0
     failures: list[str] = []
 
@@ -112,7 +117,7 @@ def test_rule_parser_accuracy(parser: FilterParser, capsys) -> None:
         expected = _expected(case["filters"])
         got = parser.parse(case["text"]).filters
         if all(
-            _normalise(getattr(got, f)) == _normalise(getattr(expected, f)) for f in FIELDS
+            _normalise(getattr(got, f)) == _normalise(getattr(expected, f)) for f in fields
         ):
             exact += 1
         else:
@@ -120,7 +125,7 @@ def test_rule_parser_accuracy(parser: FilterParser, capsys) -> None:
                 f"{case['text']!r}: expected {expected.model_dump(exclude_defaults=True)} "
                 f"got {got.model_dump(exclude_defaults=True)}"
             )
-        for field in FIELDS:
+        for field in fields:
             want, have = getattr(expected, field), getattr(got, field)
             if isinstance(want, list):
                 w, h = set(want), set(have)
@@ -140,7 +145,7 @@ def test_rule_parser_accuracy(parser: FilterParser, capsys) -> None:
 
     accuracy = exact / len(cases)
     with capsys.disabled():
-        print(f"\nrules: exact-match accuracy {accuracy:.3f} over {len(cases)} phrases")
+        print(f"\n{label}: exact-match accuracy {accuracy:.3f} over {len(cases)} phrases")
         for field, score in scores.items():
             print(
                 f"  {field:<16} p={score.precision:.3f} r={score.recall:.3f} "
@@ -148,10 +153,24 @@ def test_rule_parser_accuracy(parser: FilterParser, capsys) -> None:
             )
         for failure in failures[:10]:
             print(f"  miss: {failure}")
+    return accuracy, scores, failures
 
+
+def test_rule_parser_accuracy(parser: FilterParser, capsys) -> None:
+    accuracy, scores, failures = _score(parser, _cases(), FIELDS, capsys, "rules")
     assert accuracy >= EXACT_MATCH_TARGET, f"accuracy {accuracy:.3f}; misses: {failures[:5]}"
     for field, score in scores.items():
         assert score.f1 >= FIELD_F1_TARGET, f"{field} f1 {score.f1:.3f}"
+
+
+def test_heldout_phrases_all_parse_exactly(parser: FilterParser, capsys) -> None:
+    """The phrase set above was written alongside the parser. This one was not, and
+    it is a hard requirement: every phrase, every field."""
+
+    cases = _cases(HELDOUT)
+    assert len(cases) >= 25
+    accuracy, _, failures = _score(parser, cases, HELDOUT_FIELDS, capsys, "held-out")
+    assert accuracy == 1.0, f"misses: {failures}"
 
 
 def test_uncovered_competitions_warn_instead_of_silently_matching(
@@ -214,3 +233,54 @@ def test_ambiguous_names_are_flagged(fixture_store) -> None:
     parsed = FilterParser(catalogue).parse("United")
     assert parsed.filters.team_ids == []
     assert any("could mean" in w for w in parsed.warnings)
+
+
+# ----------------------------------------------------------------- chip spans
+def _span_cases() -> list[tuple[str, str, str]]:
+    return [
+        ("Spain", "team", "Spain"),
+        ("show me Mbappé on the ball", "player", "Mbappé"),
+        ("Bayern at home, last fifteen minutes, trailing", "venue", "at home"),
+        ("Bayern at home, last fifteen minutes, trailing", "minute_range",
+         "last fifteen minutes"),
+        ("Bayern at home, last fifteen minutes, trailing", "game_state", "trailing"),
+        ("the Euro 2024 final", "season", "2024"),
+        ("Musiala in the final third", "ball_zone", "in the final third"),
+    ]
+
+
+@pytest.mark.parametrize(("text", "field", "span"), _span_cases())
+def test_chip_span_is_the_exact_text_that_produced_it(
+    parser: FilterParser, text: str, field: str, span: str
+) -> None:
+    chips = [c for c in parser.parse(text).chips if c.field == field]
+    assert [c.span for c in chips] == [span]
+    assert span in text
+
+
+def test_every_chip_span_is_a_substring_of_the_input(parser: FilterParser) -> None:
+    for case in _cases() + _cases(HELDOUT):
+        for chip in parser.parse(case["text"]).chips:
+            assert chip.span and chip.span in case["text"], (case["text"], chip)
+
+
+def test_game_state_words_are_whole_words(parser: FilterParser) -> None:
+    assert parser.parse("closing stages").filters.game_state == "any"
+    assert parser.parse("spain closing").filters.game_state == "any"
+
+
+def test_opponent_cannot_be_filtered_so_it_is_reported(parser: FilterParser) -> None:
+    parsed = parser.parse("Germany against Spain")
+    assert parsed.filters.team_ids == [914]
+    assert parsed.filters.team_role == "attacking"
+    assert [c.value for c in parsed.chips] == ["Germany"]
+    assert any("opponent (Spain)" in w for w in parsed.warnings)
+
+
+def test_readme_headline_example_parses_fully(parser: FilterParser) -> None:
+    parsed = parser.parse("Bayern at home, last fifteen minutes, trailing")
+    assert parsed.unmatched == []
+    assert parsed.filters.model_dump(exclude_defaults=True) == {
+        "team_ids": [169], "team_role": "attacking", "venue": "home",
+        "minute_range": (75, 98), "game_state": "losing",
+    }

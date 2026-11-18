@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS frames (
     period              SMALLINT NOT NULL,
     stage               TEXT NOT NULL,
     game_state          TEXT NOT NULL,
-    zone_id             SMALLINT NOT NULL
+    zone_id             SMALLINT NOT NULL,
+    possession_is_home  BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS frames_possession_idx ON frames (match_id, possession_id);
 CREATE INDEX IF NOT EXISTS frames_competition_idx ON frames (competition_id, season_id);

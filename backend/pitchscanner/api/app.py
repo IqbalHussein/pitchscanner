@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -45,8 +48,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
         state: AppState = app.state.app_state
         counts = state.store.counts()
         entities = state.filters.warm()
-        for version, _ in getattr(state.store, "_vectors", {}).items():
-            metrics.INDEX_VECTORS.labels(encoding_version=version).set(counts.frames)
+        for version, n in state.store.vector_counts().items():
+            metrics.INDEX_VECTORS.labels(encoding_version=version).set(n)
         state.ready = True
         log.info("startup", store=cfg.store, entities=entities, **counts.as_dict())
         yield
@@ -101,7 +104,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
             status=str(response.status_code),
         ).observe(elapsed)
         response.headers["x-request-id"] = request_id
-        response.headers["server-timing"] = f"total;dur={elapsed * 1000:.1f}"
+        total = f"total;dur={elapsed * 1000:.1f}"
+        existing = response.headers.get("server-timing")
+        response.headers["server-timing"] = f"{existing}, {total}" if existing else total
         log.info(
             "request",
             method=request.method,
@@ -112,8 +117,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
         request_id_var.reset(token)
         return response
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # FastAPI's default handler echoes the offending input back, and a NaN or
+        # an infinity in it makes the JSON encoder raise: a 422 became a 500.
+        return JSONResponse(
+            status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))}
+        )
+
     app.include_router(router)
     return app
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 app = create_app()

@@ -187,6 +187,7 @@ class PostgresStore:
                     f.ball_x, f.ball_y, f.mirrored,
                     m.competition_id, m.season_id, m.possession_team_id, m.opponent_team_id,
                     m.player_id, m.minute, m.period, m.stage, m.game_state, m.zone_id,
+                    m.possession_is_home,
                 )
             )
         with self.conn.cursor() as cur:
@@ -194,12 +195,14 @@ class PostgresStore:
                 """
                 INSERT INTO frames (event_id, match_id, possession_id, players, visible_area,
                     ball_x, ball_y, mirrored, competition_id, season_id, possession_team_id,
-                    opponent_team_id, player_id, minute, period, stage, game_state, zone_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    opponent_team_id, player_id, minute, period, stage, game_state, zone_id,
+                    possession_is_home)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (event_id) DO UPDATE SET
                     players = EXCLUDED.players, visible_area = EXCLUDED.visible_area,
                     ball_x = EXCLUDED.ball_x, ball_y = EXCLUDED.ball_y,
-                    game_state = EXCLUDED.game_state, zone_id = EXCLUDED.zone_id
+                    game_state = EXCLUDED.game_state, zone_id = EXCLUDED.zone_id,
+                    possession_is_home = EXCLUDED.possession_is_home
                 """,
                 payload,
             )
@@ -366,6 +369,16 @@ class PostgresStore:
         perfectly healthy.
         """
 
+        return sum(self.vector_counts().values())
+
+    @property
+    def effective_index_kind(self) -> str | None:
+        # The configured index is what Postgres actually uses.
+        return None
+
+    def vector_counts(self) -> dict[str, int]:
+        """Vectors per encoding version, read from the per-encoding tables."""
+
         with self.conn.cursor() as cur:
             cur.execute(
                 """
@@ -376,15 +389,17 @@ class PostgresStore:
                 """
             )
             tables = [str(r["table_name"]) for r in cur.fetchall()]
-            if not tables:
-                return 0
-            query = sql.SQL(" UNION ALL ").join(
-                sql.SQL("SELECT count(*) AS n FROM {}").format(sql.Identifier(name))
-                for name in tables
-            )
-            cur.execute(sql.SQL("SELECT sum(n)::bigint AS total FROM ({}) t").format(query))
-            row = cur.fetchone() or {}
-        return int(row.get("total") or 0)
+            counts: dict[str, int] = {}
+            for name in tables:
+                cur.execute(
+                    sql.SQL(
+                        "SELECT encoding_version, count(*) AS n FROM {} GROUP BY encoding_version"
+                    ).format(sql.Identifier(name))
+                )
+                for row in cur.fetchall():
+                    version = str(row["encoding_version"])
+                    counts[version] = counts.get(version, 0) + int(row["n"])
+        return counts
 
     def match(self, match_id: int) -> MatchRecord | None:
         with self.conn.cursor() as cur:
@@ -415,7 +430,7 @@ class PostgresStore:
                 """
                 SELECT event_id, match_id, possession_id, competition_id, season_id,
                        possession_team_id, opponent_team_id, player_id, minute, period,
-                       stage, game_state, zone_id
+                       stage, game_state, zone_id, possession_is_home
                 FROM frames WHERE event_id = ANY(%s)
                 """,
                 (list(event_ids),),
@@ -429,6 +444,7 @@ class PostgresStore:
                 opponent_team_id=r["opponent_team_id"], player_id=r["player_id"],
                 minute=r["minute"], period=r["period"], stage=r["stage"],
                 game_state=r["game_state"], zone_id=r["zone_id"],
+                possession_is_home=r["possession_is_home"],
             )
             for r in rows
         }

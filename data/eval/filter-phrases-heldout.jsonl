@@ -1,0 +1,37 @@
+{"text": "Bayern defending", "filters": {"team_ids": [169], "team_role": "defending"}}
+{"text": "Leverkusen defending", "filters": {"team_ids": [904], "team_role": "defending"}}
+{"text": "final third", "filters": {"ball_zone_ids": [4, 5, 10, 11, 16, 17]}}
+{"text": "Musiala in the final third", "filters": {"player_ids": [3509], "player_role": "attacking", "ball_zone_ids": [4, 5, 10, 11, 16, 17]}}
+{"text": "Spain in the attacking third", "filters": {"team_ids": [772], "team_role": "attacking", "ball_zone_ids": [4, 5, 10, 11, 16, 17]}}
+{"text": "Germany against Spain", "filters": {"team_ids": [914], "team_role": "attacking"}}
+{"text": "Spain vs Germany", "filters": {"team_ids": [772], "team_role": "attacking"}}
+{"text": "England versus Morocco", "filters": {"team_ids": [768], "team_role": "attacking"}}
+{"text": "losing", "filters": {"game_state": "losing"}}
+{"text": "winning", "filters": {"game_state": "winning"}}
+{"text": "drawing", "filters": {"game_state": "drawing"}}
+{"text": "leading", "filters": {"game_state": "winning"}}
+{"text": "level", "filters": {"game_state": "drawing"}}
+{"text": "last fifteen minutes", "filters": {"minute_range": [75, 98]}}
+{"text": "last ten minutes", "filters": {"minute_range": [80, 98]}}
+{"text": "first twenty minutes", "filters": {"minute_range": [0, 20]}}
+{"text": "first ten minutes", "filters": {"minute_range": [0, 10]}}
+{"text": "final twenty minutes", "filters": {"minute_range": [70, 98]}}
+{"text": "between minute 60 and 75", "filters": {"minute_range": [60, 75]}}
+{"text": "between 60 and 75 minutes", "filters": {"minute_range": [60, 75]}}
+{"text": "minutes 60-75", "filters": {"minute_range": [60, 75]}}
+{"text": "from the 60th to the 75th minute", "filters": {"minute_range": [60, 75]}}
+{"text": "late in the game", "filters": {"minute_range": [75, 98]}}
+{"text": "in the box", "filters": {"ball_zone_ids": [5, 11, 17]}}
+{"text": "in the penalty area", "filters": {"ball_zone_ids": [5, 11, 17]}}
+{"text": "Kane in the box", "filters": {"player_ids": [3043], "player_role": "attacking", "ball_zone_ids": [5, 11, 17]}}
+{"text": "at home", "filters": {"venue": "home"}}
+{"text": "home", "filters": {"venue": "home"}}
+{"text": "away", "filters": {"venue": "away"}}
+{"text": "on the road", "filters": {"venue": "away"}}
+{"text": "away from home", "filters": {"venue": "away"}}
+{"text": "Spain at home", "filters": {"team_ids": [772], "team_role": "attacking", "venue": "home"}}
+{"text": "Wirtz away", "filters": {"player_ids": [1234], "player_role": "attacking", "venue": "away"}}
+{"text": "Bayern at home, last fifteen minutes, trailing", "filters": {"team_ids": [169], "team_role": "attacking", "venue": "home", "minute_range": [75, 98], "game_state": "losing"}}
+{"text": "Germany, away, losing, late in the game", "filters": {"team_ids": [914], "team_role": "attacking", "venue": "away", "game_state": "losing", "minute_range": [75, 98]}}
+{"text": "Mbappe in the box when winning", "filters": {"player_ids": [5503], "player_role": "attacking", "ball_zone_ids": [5, 11, 17], "game_state": "winning"}}
+{"text": "Leverkusen in the final third at home", "filters": {"team_ids": [904], "team_role": "attacking", "ball_zone_ids": [4, 5, 10, 11, 16, 17], "venue": "home"}}

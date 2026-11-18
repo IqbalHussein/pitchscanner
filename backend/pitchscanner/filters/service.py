@@ -5,7 +5,7 @@ from __future__ import annotations
 from pitchscanner.config import Settings, get_settings
 from pitchscanner.filters.catalogue import Catalogue
 from pitchscanner.filters.llm import LLMFilterParser
-from pitchscanner.filters.parser import FilterParser, merge
+from pitchscanner.filters.parser import FilterParser, merge, overridden
 from pitchscanner.models import Filters, ParsedFilters
 from pitchscanner.store.base import Store
 
@@ -61,4 +61,43 @@ class FilterService:
         if not text or not text.strip():
             return explicit, None
         parsed = self.parse(text)
-        return merge(explicit, parsed.filters), parsed
+        return merge(explicit, parsed.filters), _note_overrides(explicit, parsed)
+
+
+#: Filter field -> (chip field, what the user would call it).
+_OVERRIDE_LABELS: dict[str, tuple[str | None, str]] = {
+    "competition_ids": ("competition", "Competition"),
+    "season_ids": ("season", "Season"),
+    "team_ids": ("team", "Team"),
+    "team_role": (None, "Team role"),
+    "player_ids": ("player", "Player"),
+    "player_role": (None, "Player role"),
+    "game_state": ("game_state", "Game state"),
+    "minute_range": ("minute_range", "Minutes"),
+    "stages": ("stage", "Stage"),
+    "ball_zone_ids": ("ball_zone", "Zone"),
+    "venue": ("venue", "Venue"),
+}
+
+
+def _note_overrides(explicit: Filters, parsed: ParsedFilters) -> ParsedFilters:
+    """Say so when a selected filter beats something the text asked for.
+
+    The text's chip for that field is dropped: it is not being applied, and a chip
+    that looks applied is how "Team: Spain" sat above Germany-only results.
+    """
+
+    fields = overridden(explicit, parsed.filters)
+    if not fields:
+        return parsed
+    chips = list(parsed.chips)
+    warnings = list(parsed.warnings)
+    for name in fields:
+        chip_field, label = _OVERRIDE_LABELS[name]
+        if chip_field is None:
+            said = str(getattr(parsed.filters, name))
+        else:
+            said = ", ".join(c.value for c in chips if c.field == chip_field)
+            chips = [c for c in chips if c.field != chip_field]
+        warnings.append(f"{label} from the text ({said}) is overridden by the selected filter.")
+    return parsed.model_copy(update={"chips": chips, "warnings": sorted(set(warnings))})

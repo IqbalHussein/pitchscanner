@@ -45,6 +45,8 @@ class FrameMeta:
     stage: str
     game_state: str
     zone_id: int
+    #: The team in possession was the match's home side.
+    possession_is_home: bool
 
 
 class CoverageRow(TypedDict):
@@ -120,6 +122,13 @@ class Store(Protocol):
 
     # --- reads -------------------------------------------------------------
     def counts(self) -> Counts: ...
+    def vector_counts(self) -> dict[str, int]:
+        """Vectors per encoding_version."""
+        ...
+    @property
+    def effective_index_kind(self) -> str | None:
+        """What actually answers ANN queries, or None to defer to settings."""
+        ...
     def match(self, match_id: int) -> MatchRecord | None: ...
     def frame(self, event_id: str) -> FrameRecord | None: ...
     def event(self, event_id: str) -> EventRecord | None: ...

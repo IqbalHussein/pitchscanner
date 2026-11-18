@@ -54,10 +54,13 @@ class RateLimiter:
     per_minute: int = 120
     _hits: dict[str, list[float]] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock)
+    _last_sweep: float = 0.0
 
     def allow(self, client: str) -> bool:
         now = monotonic()
         with self._lock:
+            if now - self._last_sweep >= 60.0:
+                self._sweep(now)
             window = [t for t in self._hits.get(client, []) if now - t < 60.0]
             if len(window) >= self.per_minute:
                 self._hits[client] = window
@@ -65,6 +68,14 @@ class RateLimiter:
             window.append(now)
             self._hits[client] = window
             return True
+
+    def _sweep(self, now: float) -> None:
+        """Drop clients with nothing left in their window, so unique IPs cannot grow
+        the dict without bound. Runs at most once a minute, under the lock."""
+
+        self._last_sweep = now
+        for client in [c for c, ts in self._hits.items() if not ts or now - ts[-1] >= 60.0]:
+            del self._hits[client]
 
 
 @dataclass

@@ -46,11 +46,11 @@ teams:
 # because the first match wins.
 game_state:
   winning: ["when winning", "while winning", "protecting a lead", "with a lead", "ahead",
-            "in front", "leading"]
+            "in front", "leading", "winning"]
   losing: ["when losing", "while losing", "behind", "chasing the game", "trailing",
-           "a goal down", "when they are losing"]
+           "a goal down", "when they are losing", "losing"]
   drawing: ["when level", "level", "when drawing", "tied", "at 0-0", "when it is level",
-            "all square"]
+            "all square", "drawing"]
 
 stage:
   knockout: ["knockout", "knockout rounds", "knockouts", "last 16", "round of 16",
@@ -76,6 +76,8 @@ time:
   - ["injury time", 90, 98]
   - ["extra time", 90, 120]
   - ["final ten minutes", 80, 98]
+  - ["late in the game", 75, 98]
+  - ["late in the match", 75, 98]
   - ["early", 0, 20]
 
 role:

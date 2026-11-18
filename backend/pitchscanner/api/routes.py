@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from pitchscanner.api import metrics
@@ -9,6 +11,7 @@ from pitchscanner.api.deps import AppState, get_state
 from pitchscanner.encoders import available as available_encodings
 from pitchscanner.geometry import PITCH_LENGTH, PITCH_WIDTH
 from pitchscanner.labeller import DEFAULT_WINDOW_S
+from pitchscanner.logging_setup import get_logger
 from pitchscanner.models import (
     CompetitionCoverage,
     FiltersResponse,
@@ -23,13 +26,27 @@ from pitchscanner.models import (
     SequenceEvent,
     SituationDetail,
     TeamOption,
+    Timing,
 )
 
 router = APIRouter()
+log = get_logger(__name__)
+
+
+def _server_timing(timing: Timing, *, cache_hit: bool = False) -> str:
+    parts = [
+        f"{stage};dur={getattr(timing, stage):.1f}"
+        for stage in ("encode", "search", "dedup", "aggregate")
+    ]
+    if cache_hit:
+        parts.append("cache;desc=hit")
+    return ", ".join(parts)
 
 
 @router.post("/v1/search", response_model=SearchResponse, summary="Search by sketch")
-def search(request: SearchRequest, state: AppState = Depends(get_state)) -> SearchResponse:
+def search(
+    request: SearchRequest, response: Response, state: AppState = Depends(get_state)
+) -> SearchResponse:
     """Sketch in, the most similar real situations plus aggregated outcomes out."""
 
     if request.k > state.settings.max_k:
@@ -37,11 +54,20 @@ def search(request: SearchRequest, state: AppState = Depends(get_state)) -> Sear
     if request.options.encoding.upper() not in available_encodings():
         raise HTTPException(422, f"unknown encoding; available: {available_encodings()}")
 
+    precomputed = state.settings.outcome_window_s
+    if not math.isclose(request.options.window_s, precomputed, abs_tol=1e-6):
+        raise HTTPException(
+            422,
+            f"outcomes are precomputed for a {precomputed:g}s window; "
+            f"window_s must be {precomputed:g} or omitted",
+        )
+
     key = request.cache_key()
     cached = state.cache.get(key)
     if cached is not None:
         metrics.CACHE_HITS.inc()
         assert isinstance(cached, SearchResponse)
+        response.headers["server-timing"] = _server_timing(cached.timing_ms, cache_hit=True)
         return cached
     metrics.CACHE_MISSES.inc()
 
@@ -58,7 +84,7 @@ def search(request: SearchRequest, state: AppState = Depends(get_state)) -> Sear
     if outcome.relaxed:
         metrics.EXACT_FALLBACKS.inc()
 
-    response = SearchResponse(
+    result = SearchResponse(
         results=outcome.results,
         stats=outcome.stats,
         parsed_filters=parsed,
@@ -68,8 +94,9 @@ def search(request: SearchRequest, state: AppState = Depends(get_state)) -> Sear
         relaxed=outcome.relaxed,
         timing_ms=outcome.timing,
     )
-    state.cache.put(key, response)
-    return response
+    state.cache.put(key, result)
+    response.headers["server-timing"] = _server_timing(result.timing_ms)
+    return result
 
 
 @router.post(
@@ -208,7 +235,7 @@ def meta(state: AppState = Depends(get_state)) -> dict[str, object]:
         "pitch": {"length": PITCH_LENGTH, "width": PITCH_WIDTH},
         "encodings": list(available_encodings()),
         "default_encoding": state.settings.encoding,
-        "index_kind": state.settings.index_kind,
+        "index_kind": state.store.effective_index_kind or state.settings.index_kind,
         "outcome_window_s": state.settings.outcome_window_s,
         "low_confidence_n": state.settings.low_confidence_n,
         "attribution": "Data: StatsBomb Open Data, free for non-commercial use.",
@@ -227,7 +254,9 @@ def readyz(response: Response, state: AppState = Depends(get_state)) -> dict[str
     except Exception as exc:
         response.status_code = 503
         metrics.ERRORS.labels(kind="readiness").inc()
-        return {"status": "unavailable", "error": str(exc)}
+        # The exception can carry connection details; keep it in the logs only.
+        log.error("readiness_failed", error=str(exc), exc_info=True)
+        return {"status": "unavailable", "error": "store unavailable"}
     # Frames without vectors is a half-loaded database: the API answers, and every
     # search comes back empty. Readiness has to mean searchable, not populated.
     ready = counts.frames > 0 and counts.vectors > 0

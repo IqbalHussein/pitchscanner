@@ -108,6 +108,39 @@ make ingest               # refresh .data/memory-store.pkl
 vercel deploy --prod      # from the repo root, linked to the project
 ```
 
+### Serving real data from Supabase
+
+The Vercel deployment above serves the fixtures. To serve real StatsBomb data
+instead, point it at a Supabase Postgres (free plan, 500 MB). The full dataset
+does not fit: the free plan holds a **subset of competitions, encoded with E1
+only**, and the API then lists only the encodings that have vectors. The
+ingest job prints the database size and fails above 450 MB, so you hear about
+it before Supabase starts refusing writes.
+
+Two secrets, two different pooler URIs (Supabase dashboard, Connect, pooler
+tabs). The direct host `db.<ref>.supabase.co` is IPv6-only, which neither
+GitHub runners nor Vercel can reach, so neither secret uses it:
+
+| Where | Name | URI |
+| --- | --- | --- |
+| GitHub repository secret | `SUPABASE_DB_URL` | session pooler, port 5432 (migrations and ingest) |
+| Vercel project env var | `PITCHSCANNER_DSN` | transaction pooler, port 6543 (the serverless function) |
+
+Then run **Actions, ingest-supabase, Run workflow** with the competitions to
+load, as `competition_id` or `competition_id:season_id`, comma-separated
+(`55:282,9`), and leave encodings at `E1`. It migrates the schema, fetches
+only those matches' `events/` and `three-sixty/` files, ingests them, and
+reports table sizes. Start with a small selection or a `limit`, check the size,
+then add more. The same thing runs locally with
+`pitchscanner --store postgres ingest --competitions 55:282,9 --encodings E1`.
+
+With `PITCHSCANNER_DSN` set, `api/index.py` serves from Postgres (E1) and turns
+prepared statements off, which the transaction pooler cannot route; the same
+switch is `PITCHSCANNER_DB_PREPARE=false` for anything else behind a
+transaction-mode pooler. Without it, the function serves the fixtures as before.
+Free Supabase projects **pause after a week of inactivity**; a paused project
+makes `/readyz` return 503 until you restore it in the dashboard.
+
 ## The three encodings
 
 A situation has no natural order — eleven players are a *set*, not a list — so

@@ -24,6 +24,7 @@ from pitchscanner.ingest.parse import (
     parse_frames,
     parse_matches,
 )
+from pitchscanner.ingest.selection import CompetitionSelector, is_selected
 from pitchscanner.labeller import label_match
 from pitchscanner.logging_setup import get_logger
 from pitchscanner.models import EventRecord, FrameRecord, MatchRecord
@@ -86,9 +87,14 @@ def ingest(
     settings: Settings | None = None,
     encodings: Sequence[str] | None = None,
     limit_matches: int | None = None,
+    competitions: Sequence[CompetitionSelector] | None = None,
     only_with_frames: bool = True,
 ) -> IngestReport:
-    """Run the whole offline side over a data directory."""
+    """Run the whole offline side over a data directory.
+
+    ``competitions`` restricts which matches files are read at all; ``limit_matches``
+    then counts only within that selection.
+    """
 
     cfg = settings or get_settings()
     started = time.perf_counter()
@@ -100,7 +106,14 @@ def ingest(
     all_frames: list[FrameRecord] = []
     all_metas: list[FrameMeta] = []
 
-    for season_file, competition_id, season_id in _match_files(data_dir):
+    season_files = [
+        f for f in _match_files(data_dir) if is_selected(competitions, f[1], f[2])
+    ]
+    if competitions and not season_files:
+        wanted = ",".join(str(c) for c in competitions)
+        raise ValueError(f"no matches files under {data_dir} for competitions {wanted}")
+
+    for season_file, competition_id, season_id in season_files:
         matches, rejects = parse_matches(
             season_file, competition_id=competition_id, season_id=season_id
         )

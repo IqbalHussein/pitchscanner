@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from pitchscanner.config import get_settings
+from pitchscanner.ingest.selection import CompetitionSelector, parse_competitions
 from pitchscanner.logging_setup import configure_logging, get_logger
 from pitchscanner.store.base import Store
 
@@ -31,14 +32,26 @@ def _store(args: argparse.Namespace) -> tuple[Store, Path | None]:
     return PostgresStore.from_settings(cfg), None
 
 
+def _competitions_arg(value: str) -> tuple[CompetitionSelector, ...]:
+    try:
+        return parse_competitions(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     from pitchscanner.ingest import fetch_open_data, ingest, write_reject_log
     from pitchscanner.store.memory import MemoryStore
 
     cfg = get_settings()
+    competitions = args.competitions
     data_dir = Path(args.data_dir) if args.data_dir else None
     if data_dir is None:
-        data_dir = Path(cfg.fixture_dir) if args.fixtures else fetch_open_data(cfg)
+        data_dir = (
+            Path(cfg.fixture_dir)
+            if args.fixtures
+            else fetch_open_data(cfg, competitions=competitions)
+        )
     store, snapshot = _store(args)
 
     report = ingest(
@@ -47,6 +60,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         settings=cfg,
         encodings=args.encodings.split(",") if args.encodings else None,
         limit_matches=args.limit,
+        competitions=competitions,
     )
     rejects = write_reject_log(report.rejects, Path(args.reject_log))
     if snapshot is not None and isinstance(store, MemoryStore):
@@ -166,6 +180,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fixtures", action="store_true", help="use the checked-in fixtures")
     p.add_argument("--limit", type=int, default=None, help="stop after N matches")
     p.add_argument("--encodings", default=None, help="comma-separated, default all")
+    p.add_argument(
+        "--competitions",
+        type=_competitions_arg,
+        default=None,
+        help="comma-separated competition_id or competition_id:season_id entries "
+        "(e.g. 55:282,9); only those matches are fetched and ingested",
+    )
     p.add_argument("--reject-log", default="bench/reports/rejects.jsonl")
     p.set_defaults(func=cmd_ingest)
 

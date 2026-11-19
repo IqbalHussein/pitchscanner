@@ -28,7 +28,7 @@ def _store(args: argparse.Namespace) -> tuple[Store, Path | None]:
         if getattr(args, "reuse", False) and path.exists():
             return MemoryStore.load(path), path
         return MemoryStore(), path
-    return PostgresStore(cfg.dsn, ef_search=cfg.hnsw_ef_search, probes=cfg.ivfflat_probes), None
+    return PostgresStore.from_settings(cfg), None
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:

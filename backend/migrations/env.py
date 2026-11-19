@@ -7,8 +7,26 @@ from sqlalchemy import engine_from_config, pool
 
 from pitchscanner.config import get_settings
 
+
+def sqlalchemy_url(dsn: str) -> str:
+    """Turn a libpq-style DSN into one SQLAlchemy will open with psycopg 3.
+
+    Supabase hands out ``postgresql://`` (or the older ``postgres://``) URIs.
+    SQLAlchemy reads a bare ``postgresql://`` as the psycopg2 driver, which is
+    not installed here, so name the driver explicitly. Query parameters such as
+    ``sslmode=require`` pass through to libpq untouched.
+    """
+
+    for prefix in ("postgresql://", "postgres://"):
+        if dsn.startswith(prefix):
+            return "postgresql+psycopg://" + dsn[len(prefix) :]
+    return dsn
+
+
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().dsn)
+# configparser treats "%" as interpolation syntax; a percent-encoded password
+# (common in Supabase URIs) would otherwise raise at this line.
+config.set_main_option("sqlalchemy.url", sqlalchemy_url(get_settings().dsn).replace("%", "%%"))
 target_metadata = None  # the schema is hand-written SQL, not an ORM model
 
 

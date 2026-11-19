@@ -21,6 +21,11 @@ class Settings(BaseSettings):
         default="postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner",
         description="Postgres DSN. Ignored when store=memory.",
     )
+    db_prepare: bool = Field(
+        default=True,
+        description="Let psycopg auto-prepare statements. Set PITCHSCANNER_DB_PREPARE=false "
+        "behind a transaction-mode pooler (Supabase port 6543), which does not support them.",
+    )
     store: str = Field(
         default="postgres",
         description="'postgres' for the real thing, 'memory' for tests and the offline demo.",

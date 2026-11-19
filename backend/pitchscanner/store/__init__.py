@@ -21,7 +21,7 @@ def make_store(settings: Settings | None = None) -> Store:
         if path.exists():
             return MemoryStore.load(path)
         return MemoryStore()
-    return PostgresStore(cfg.dsn, ef_search=cfg.hnsw_ef_search, probes=cfg.ivfflat_probes)
+    return PostgresStore.from_settings(cfg)
 
 
 __all__ = [

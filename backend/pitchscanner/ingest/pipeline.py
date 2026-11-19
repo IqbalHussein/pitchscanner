@@ -6,6 +6,7 @@ rerunning after a failure converges on the same database instead of duplicating.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -39,6 +40,7 @@ class IngestReport:
     events: int = 0
     frames: int = 0
     outcomes: int = 0
+    matches_skipped: int = 0
     vectors: dict[str, int] = field(default_factory=dict)
     rejects: list[Reject] = field(default_factory=list)
     seconds: float = 0.0
@@ -54,6 +56,7 @@ class IngestReport:
             "events": self.events,
             "frames": self.frames,
             "outcomes": self.outcomes,
+            "matches_skipped": self.matches_skipped,
             "vectors": self.vectors,
             "rejects": len(self.rejects),
             "seconds": round(self.seconds, 2),
@@ -80,6 +83,16 @@ def _match_files(data_dir: Path) -> list[tuple[Path, int, int]]:
     return out
 
 
+def _describe_data_error(exc: ValueError) -> str:
+    """A short, stable description of a parse/decode failure."""
+
+    if isinstance(exc, json.JSONDecodeError):
+        return f"JSONDecodeError at line {exc.lineno} col {exc.colno}"
+    if isinstance(exc, UnicodeDecodeError):
+        return f"UnicodeDecodeError at byte {exc.start}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def ingest(
     data_dir: Path,
     store: Store,
@@ -89,11 +102,18 @@ def ingest(
     limit_matches: int | None = None,
     competitions: Sequence[CompetitionSelector] | None = None,
     only_with_frames: bool = True,
+    fail_on_bad_file: bool = False,
 ) -> IngestReport:
     """Run the whole offline side over a data directory.
 
     ``competitions`` restricts which matches files are read at all; ``limit_matches``
     then counts only within that selection.
+
+    A match whose events or three-sixty file cannot be read or parsed (corrupt or
+    truncated JSON, undecodable bytes) is skipped whole: nothing is written for it,
+    a ``Reject`` and a warning are recorded and ``matches_skipped`` is incremented.
+    ``fail_on_bad_file=True`` re-raises instead. Only data errors qualify; any other
+    exception is a bug and propagates.
     """
 
     cfg = settings or get_settings()
@@ -128,14 +148,30 @@ def ingest(
             if limit_matches is not None and report.matches >= limit_matches:
                 break
 
-            events, goals, ev_rejects = parse_events(events_path, match.match_id)
+            # Everything for the match is parsed before anything is stored, so a
+            # bad file skips the match whole instead of leaving a partial one.
+            current = events_path
+            try:
+                events, goals, ev_rejects = parse_events(events_path, match.match_id)
+                events_by_id = {e.event_id: e for e in events}
+                frames: list[FrameRecord] = []
+                fr_rejects: list[Reject] = []
+                if frames_path.exists():
+                    current = frames_path
+                    frames, fr_rejects = parse_frames(frames_path, match.match_id, events_by_id)
+            except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError included
+                if fail_on_bad_file:
+                    raise
+                kind = "events" if current == events_path else "three-sixty"
+                reason = f"unreadable {kind} file: {_describe_data_error(exc)}"
+                report.rejects.append(Reject(str(current), reason, match.match_id))
+                report.matches_skipped += 1
+                log.warning(
+                    "match_skipped", match_id=match.match_id, path=str(current), reason=reason
+                )
+                continue
             report.rejects.extend(ev_rejects)
-            events_by_id = {e.event_id: e for e in events}
-
-            frames: list[FrameRecord] = []
-            if frames_path.exists():
-                frames, fr_rejects = parse_frames(frames_path, match.match_id, events_by_id)
-                report.rejects.extend(fr_rejects)
+            report.rejects.extend(fr_rejects)
 
             # Normalise, then optionally add the mirrored copy. The mirror is a
             # real row with its own event_id suffix so dedup and outcomes still

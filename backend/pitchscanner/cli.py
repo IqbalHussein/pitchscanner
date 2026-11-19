@@ -61,6 +61,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         encodings=args.encodings.split(",") if args.encodings else None,
         limit_matches=args.limit,
         competitions=competitions,
+        fail_on_bad_file=args.fail_on_bad_file,
     )
     rejects = write_reject_log(report.rejects, Path(args.reject_log))
     if snapshot is not None and isinstance(store, MemoryStore):
@@ -188,6 +189,11 @@ def build_parser() -> argparse.ArgumentParser:
         "(e.g. 55:282,9); only those matches are fetched and ingested",
     )
     p.add_argument("--reject-log", default="bench/reports/rejects.jsonl")
+    p.add_argument(
+        "--fail-on-bad-file",
+        action="store_true",
+        help="abort on an unreadable events/three-sixty file instead of skipping its match",
+    )
     p.set_defaults(func=cmd_ingest)
 
     p = sub.add_parser("serve", help="run the API")

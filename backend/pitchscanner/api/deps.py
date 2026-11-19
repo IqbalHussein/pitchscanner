@@ -14,6 +14,8 @@ from time import monotonic
 from fastapi import Request
 
 from pitchscanner.config import Settings, get_settings
+from pitchscanner.encoders import available as available_encodings
+from pitchscanner.encoders import get_encoder
 from pitchscanner.filters import FilterService
 from pitchscanner.search import SearchService
 from pitchscanner.store import make_store
@@ -87,6 +89,31 @@ class AppState:
     cache: QueryCache
     limiter: RateLimiter
     ready: bool = False
+    _served: tuple[float, tuple[str, ...]] | None = field(default=None, repr=False)
+
+    #: How long the list of served encodings is reused. It only changes when an
+    #: ingest runs, and on Postgres it costs a count over every vector table.
+    SERVED_TTL_S = 30.0
+
+    def served_encodings(self) -> tuple[str, ...]:
+        """Encodings this database can actually answer queries for.
+
+        An encoding is served when its *current* version (``E1-v1``) has vectors
+        in the store. The registry (`available_encodings`) lists what the code
+        can compute, which on a partially loaded database (the free-tier
+        deployment holds E1 only) includes encodings whose table is empty or
+        does not exist.
+        """
+
+        now = monotonic()
+        if self._served is not None and now - self._served[0] < self.SERVED_TTL_S:
+            return self._served[1]
+        counts = self.store.vector_counts()
+        served = tuple(
+            e for e in available_encodings() if counts.get(get_encoder(e).version, 0) > 0
+        )
+        self._served = (now, served)
+        return served
 
     @classmethod
     def build(cls, settings: Settings | None = None, store: Store | None = None) -> AppState:

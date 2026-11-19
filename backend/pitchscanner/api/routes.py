@@ -51,8 +51,18 @@ def search(
 
     if request.k > state.settings.max_k:
         raise HTTPException(422, f"k must be <= {state.settings.max_k}")
-    if request.options.encoding.upper() not in available_encodings():
-        raise HTTPException(422, f"unknown encoding; available: {available_encodings()}")
+    encoding = request.options.encoding.upper()
+    served = state.served_encodings()
+    if encoding not in served:
+        if encoding not in available_encodings():
+            raise HTTPException(
+                422, f"unknown encoding {encoding!r}; known: {list(available_encodings())}"
+            )
+        raise HTTPException(
+            422,
+            f"encoding {encoding} has no vectors in this database; "
+            f"available: {list(served) or 'none (nothing ingested yet)'}",
+        )
 
     precomputed = state.settings.outcome_window_s
     if not math.isclose(request.options.window_s, precomputed, abs_tol=1e-6):
@@ -142,7 +152,7 @@ def filters(state: AppState = Depends(get_state)) -> FiltersResponse:
         teams=[TeamOption(**row) for row in state.store.team_options()],
         stages=["group", "knockout", "final", "regular"],
         game_states=["any", "winning", "drawing", "losing"],
-        encodings=list(available_encodings()),
+        encodings=list(state.served_encodings()),
         total_frames=counts.frames,
         total_matches=counts.matches,
         total_events=counts.events,
@@ -230,11 +240,17 @@ def meta(state: AppState = Depends(get_state)) -> dict[str, object]:
     """Real counts, so the README and the resume can quote something committed."""
 
     counts = state.store.counts()
+    served = state.served_encodings()
     return {
         "counts": counts.as_dict(),
         "pitch": {"length": PITCH_LENGTH, "width": PITCH_WIDTH},
-        "encodings": list(available_encodings()),
-        "default_encoding": state.settings.encoding,
+        "encodings": list(served),
+        # The configured default is only honest if it has vectors.
+        "default_encoding": (
+            state.settings.encoding
+            if state.settings.encoding in served or not served
+            else served[0]
+        ),
         "index_kind": state.store.effective_index_kind or state.settings.index_kind,
         "outcome_window_s": state.settings.outcome_window_s,
         "low_confidence_n": state.settings.low_confidence_n,

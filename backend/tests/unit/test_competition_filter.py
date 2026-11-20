@@ -83,6 +83,9 @@ def test_fetch_checks_out_only_selected_matches(tmp_path: Path) -> None:
 
     upstream = tmp_path / "upstream"
     shutil.copytree(FIXTURE_DIR, upstream / "data")
+    # A match that has events but no three-sixty file, like most of the real repo.
+    first = next((FIXTURE_DIR / "events").glob("*.json"))
+    (upstream / "data" / "events" / "999999999.json").write_bytes(first.read_bytes())
 
     def git(*args: str, cwd: Path = upstream) -> str:
         done = subprocess.run(
@@ -109,6 +112,7 @@ def test_fetch_checks_out_only_selected_matches(tmp_path: Path) -> None:
         return {p.name for p in (data / "events").glob("*.json")}
 
     all_ids = {p.name for p in (FIXTURE_DIR / "events").glob("*.json")}
+    assert "999999999.json" not in checked_out(fetch_open_data(cfg))  # no frames: not fetched
     data = fetch_open_data(cfg, competitions=SEL_9)
     nine = checked_out(data)
     assert nine and nine < all_ids

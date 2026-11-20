@@ -30,7 +30,7 @@ export function encodeSketch(state: SketchState): string {
   const params = new URLSearchParams();
   params.set('b', `${round(state.ball.x)}.${round(state.ball.y)}`);
   if (state.players.length) params.set('p', state.players.map(encodePlayer).join('_'));
-  if (state.k !== 25) params.set('k', String(state.k));
+  if (state.k !== 30) params.set('k', String(state.k));
   if (state.encoding !== 'E1') params.set('e', state.encoding);
   if (!state.mirror) params.set('m', '0');
   if (state.filterText.trim()) params.set('q', state.filterText.trim());

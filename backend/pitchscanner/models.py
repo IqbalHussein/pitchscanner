@@ -171,7 +171,7 @@ class SearchRequest(BaseModel):
     ball: PointIn
     attackers: list[PointIn] = Field(default_factory=list, max_length=MAX_PER_SIDE)
     defenders: list[PointIn] = Field(default_factory=list, max_length=MAX_PER_SIDE)
-    k: int = Field(default=25, ge=1, le=100)
+    k: int = Field(default=30, ge=1, le=100)
     filters: Filters = Field(default_factory=Filters)
     filter_text: str | None = Field(default=None, max_length=500)
     options: SearchOptions = Field(default_factory=SearchOptions)

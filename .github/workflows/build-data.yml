@@ -1,0 +1,191 @@
+# Builds the full StatsBomb 360 dataset into an array store and publishes it as a
+# GitHub Release. The Vercel build downloads the release pinned in data/release.json
+# (see scripts/vercel_build.sh), so shipping new data is: run this, paste the
+# release.json asset into data/release.json, commit, deploy.
+#
+# Manual only. The ingest reads ~430 matches and takes a good while, and it is
+# the one job whose output the live site depends on.
+name: build-data
+
+on:
+  workflow_dispatch:
+    inputs:
+      competitions:
+        description: 'Only these competitions, e.g. "55:282,9". Empty = every match with 360 data.'
+        required: false
+        default: ''
+      encodings:
+        description: 'Encodings to build and serve'
+        required: false
+        default: 'E1,E2'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-data
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      PITCHSCANNER_STORE: arrays
+      PITCHSCANNER_DATA_CACHE: ${{ runner.temp }}/open-data
+      COMPETITIONS: ${{ inputs.competitions }}
+      ENCODINGS: ${{ inputs.encodings }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e backend
+
+      - name: Resolve names
+        id: names
+        run: |
+          sb=$(python -c "from pitchscanner.config import get_settings; print(get_settings().open_data_commit)")
+          sb7=${sb:0:7}
+          sha7=${GITHUB_SHA:0:7}
+          {
+            echo "sb=$sb"
+            echo "name=pitchscanner-data-$sb7-$sha7"
+            echo "tag=data-$sb7-$sha7"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fetch StatsBomb open data (pinned commit, only matches with 360 data)
+        run: |
+          # A blobless fetch, then only events/ and three-sixty/ files for matches
+          # that have a three-sixty file (see ingest/fetch.py).
+          args=()
+          if [ -n "$COMPETITIONS" ]; then args=(--competitions "$COMPETITIONS"); fi
+          python - "${args[@]}" <<'PY'
+          import sys
+          from pitchscanner.config import get_settings
+          from pitchscanner.cli import build_parser
+          from pitchscanner.ingest import fetch_open_data
+          comps = build_parser().parse_args(["ingest", *sys.argv[1:]]).competitions
+          print(fetch_open_data(get_settings(), competitions=comps))
+          PY
+          df -h "$RUNNER_TEMP" | tail -1
+          du -sh "$PITCHSCANNER_DATA_CACHE"
+
+      - name: Ingest into an array store
+        run: |
+          mkdir -p dist
+          args=(--data-dir "$PITCHSCANNER_DATA_CACHE/data" --encodings "$ENCODINGS" --out dist/arrays
+                --reject-log dist/rejects.jsonl)
+          if [ -n "$COMPETITIONS" ]; then args+=(--competitions "$COMPETITIONS"); fi
+          pitchscanner --store arrays ingest "${args[@]}" > dist/ingest.stdout
+          # Logs and the final JSON report share stdout; the report is the last
+          # top-level object.
+          python - <<'PY'
+          import json
+          raw = open("dist/ingest.stdout").read()
+          report = json.loads(raw[raw.rindex("\n{\n") + 1 :])
+          json.dump(report, open("dist/ingest-report.json", "w"), indent=2)
+          PY
+          # Raw StatsBomb files are no longer needed; free the disk for packaging.
+          rm -rf "$PITCHSCANNER_DATA_CACHE"
+          df -h . | tail -1
+
+      - name: Job summary and sanity gates
+        run: |
+          r=dist/ingest-report.json
+          {
+            echo "## Ingest report"
+            echo
+            echo '```json'
+            jq 'del(.indexes)' "$r"
+            echo '```'
+            echo
+            echo "### Sizes"
+            echo '```'
+            du -sh dist/arrays dist/arrays/* | sed 's|dist/||'
+            echo '```'
+            echo
+            echo "Rejects: $(wc -l < dist/rejects.jsonl) (log: dist/rejects.jsonl, uploaded as a workflow artifact)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          frames=$(jq .frames "$r"); skipped=$(jq .matches_skipped "$r")
+          echo "frames=$frames matches=$(jq .matches "$r") skipped=$skipped"
+          [ -f dist/arrays/meta.json ] || { echo "::error::dist/arrays/meta.json is missing"; exit 1; }
+          if [ -z "$COMPETITIONS" ] && [ "$frames" -lt 1000000 ]; then
+            echo "::error::only $frames frames for a full build (expected > 1,000,000)"; exit 1
+          fi
+          if [ "$skipped" -gt 2 ]; then
+            echo "::error::$skipped matches were skipped (limit 2)"; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ingest-logs
+          path: |
+            dist/rejects.jsonl
+            dist/ingest-report.json
+          if-no-files-found: ignore
+
+      - name: Package
+        env:
+          NAME: ${{ steps.names.outputs.name }}
+          TAG: ${{ steps.names.outputs.tag }}
+          SB: ${{ steps.names.outputs.sb }}
+        run: |
+          # tar+gzip (level 1), cut into parts below GitHub's 2 GiB asset limit.
+          # zstd is not in the Python standard library before 3.14 or necessarily
+          # on Vercel's build image, and gzip level 1 already halves the vectors
+          # (the detail files are gzip'd and do not shrink), so gzip it is.
+          python scripts/data_release.py package dist/arrays dist/release \
+            --name "$NAME" --tag "$TAG" --statsbomb-commit "$SB" --code-sha "$GITHUB_SHA" \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          (cd dist/release && sha256sum -c ./*.sha256)
+          ls -l dist/release
+          {
+            echo
+            echo "### Release assets"
+            echo '```'
+            ls -l dist/release | tail -n +2 | awk '{print $5, $9}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.names.outputs.tag }}
+          SB: ${{ steps.names.outputs.sb }}
+        run: |
+          notes="StatsBomb open data at $SB, built from $GITHUB_SHA.
+          $(jq -r '"\(.matches) matches, \(.frames) frames, encodings \(.encodings | join(", "))."' dist/release/release.json)
+          Pin it by copying the release.json asset to data/release.json."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes "$notes" --latest=false
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Data $TAG" \
+              --notes "$notes" --latest=false
+          fi
+          # Parts and checksums first, the manifest last: it is what people copy.
+          mapfile -t files < <(find dist/release -type f ! -name release.json | sort)
+          gh release upload "$TAG" "${files[@]}" --clobber
+          gh release upload "$TAG" dist/release/release.json --clobber
+          {
+            echo
+            echo "### Release"
+            echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+            echo
+            echo '`data/release.json` for this release:'
+            echo '```json'
+            cat dist/release/release.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

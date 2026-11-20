@@ -14,10 +14,10 @@ from pathlib import Path
 
 import numpy as np
 
-from pitchscanner.baselines import compute_zone_baselines
+from pitchscanner.baselines import ZoneAccumulator
 from pitchscanner.config import Settings, get_settings
 from pitchscanner.encoders import available, encode_many, get_encoder
-from pitchscanner.ingest.catalogue import build_catalogue
+from pitchscanner.ingest.catalogue import CatalogueBuilder
 from pitchscanner.ingest.normalize import frame_meta, normalise_frame
 from pitchscanner.ingest.parse import (
     Reject,
@@ -29,7 +29,7 @@ from pitchscanner.ingest.parse import (
 from pitchscanner.ingest.selection import CompetitionSelector, is_selected
 from pitchscanner.labeller import label_match
 from pitchscanner.logging_setup import get_logger
-from pitchscanner.models import EventRecord, FrameRecord, MatchRecord
+from pitchscanner.models import FrameRecord
 from pitchscanner.store.base import FrameMeta, Store
 
 log = get_logger(__name__)
@@ -129,10 +129,16 @@ def ingest(
     report = IngestReport()
     store.init_schema()
 
-    all_matches: list[MatchRecord] = []
-    all_events: list[EventRecord] = []
-    all_frames: list[FrameRecord] = []
-    all_metas: list[FrameMeta] = []
+    # Nothing per frame is kept across matches: the catalogue and the zone
+    # baselines are running aggregates, and each match's vectors are encoded as
+    # soon as the match is parsed. A store that can take vectors a match at a time
+    # (``streaming_vectors``, the array store) gets them immediately; the others
+    # get one call per encoding at the end, as they always did.
+    encoders = [get_encoder(e) for e in tuple(encodings or available())]
+    streaming = bool(getattr(store, "streaming_vectors", False))
+    pending: dict[str, list[tuple[str, np.ndarray]]] = {e.version: [] for e in encoders}
+    catalogue = CatalogueBuilder()
+    zones = ZoneAccumulator()
 
     season_files = [
         f for f in _match_files(data_dir) if is_selected(competitions, f[1], f[2])
@@ -223,14 +229,22 @@ def ingest(
             store.upsert_frames(normalised, metas)
             store.upsert_outcomes(outcomes)
 
+            if normalised:
+                situations = [f.to_situation() for f in normalised]
+                for encoder in encoders:
+                    vectors = encode_many(encoder, situations)
+                    rows = [(f.event_id, vectors[i]) for i, f in enumerate(normalised)]
+                    if streaming:
+                        store.upsert_vectors(encoder.version, encoder.dim, rows)
+                    else:
+                        pending[encoder.version].extend(rows)
+            zones.add(normalised, {o.event_id: o for o in outcomes})
+            catalogue.add_match(match, events, normalised)
+
             report.matches += 1
             report.events += len(events)
             report.frames += len(normalised)
             report.outcomes += len(outcomes)
-            all_matches.append(match)
-            all_events.extend(events)
-            all_frames.extend(normalised)
-            all_metas.extend(metas)
             log.info(
                 "match_ingested",
                 match_id=match.match_id,
@@ -241,32 +255,21 @@ def ingest(
             break
 
     # --- derive -----------------------------------------------------------
-    encodings = tuple(encodings or available())
-    for encoding in encodings:
-        encoder = get_encoder(encoding)
-        situations = [f.to_situation() for f in all_frames]
-        rows: list[tuple[str, np.ndarray]] = []
-        if situations:
-            vectors = encode_many(encoder, situations)
-            rows = [(f.event_id, vectors[i]) for i, f in enumerate(all_frames)]
-        # Mirroring is applied to the *query* instead of the index: encoding the
-        # sketch twice costs microseconds, while a mirrored copy of every frame
-        # would double index size and build time for the same reach. See
-        # docs/design-notes.md.
-        n = store.upsert_vectors(encoder.version, encoder.dim, rows)
-        report.vectors[encoder.version] = n
-
-        outcome_map = store.outcomes([f.event_id for f in all_frames])
-        store.upsert_baselines(
-            compute_zone_baselines(
-                all_frames, outcome_map, encoding_version=encoder.version
+    # Mirroring is applied to the *query* instead of the index: encoding the
+    # sketch twice costs microseconds, while a mirrored copy of every frame
+    # would double index size and build time for the same reach. See
+    # docs/design-notes.md.
+    for encoder in encoders:
+        if streaming:
+            report.vectors[encoder.version] = store.vector_counts().get(encoder.version, 0)
+        else:
+            report.vectors[encoder.version] = store.upsert_vectors(
+                encoder.version, encoder.dim, pending.pop(encoder.version)
             )
-        )
+        store.upsert_baselines(zones.baselines(encoder.version))
         report.indexes.append(store.build_index(encoder.version, cfg.index_kind))
 
-    store.upsert_catalogue(
-        build_catalogue(all_matches, all_events, all_frames, {m.event_id: m for m in all_metas})
-    )
+    store.upsert_catalogue(catalogue.entries())
 
     report.seconds = time.perf_counter() - started
     log.info("ingest_complete", **report.as_dict())

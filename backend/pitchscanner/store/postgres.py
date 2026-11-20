@@ -512,6 +512,16 @@ class PostgresStore:
             cur.execute("SELECT * FROM frames WHERE event_id = ANY(%s)", (list(event_ids),))
             return {str(r["event_id"]): _frame_from_row(r) for r in cur.fetchall()}
 
+    def mirrored_flags(self, event_ids: Sequence[str]) -> dict[str, bool]:
+        if not event_ids:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT event_id, mirrored FROM frames WHERE event_id = ANY(%s)",
+                (list(event_ids),),
+            )
+            return {str(r["event_id"]): bool(r["mirrored"]) for r in cur.fetchall()}
+
     def frames(self, limit: int | None = None) -> list[FrameRecord]:
         q = "SELECT * FROM frames ORDER BY match_id, possession_id"
         if limit:

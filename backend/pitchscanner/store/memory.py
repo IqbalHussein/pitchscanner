@@ -188,6 +188,9 @@ class MemoryStore:
     def frames_by_id(self, event_ids: Sequence[str]) -> dict[str, FrameRecord]:
         return {e: self._frames[e] for e in event_ids if e in self._frames}
 
+    def mirrored_flags(self, event_ids: Sequence[str]) -> dict[str, bool]:
+        return {e: self._frames[e].mirrored for e in event_ids if e in self._frames}
+
     def frames(self, limit: int | None = None) -> list[FrameRecord]:
         rows = list(self._frames.values())
         return rows[:limit] if limit else rows

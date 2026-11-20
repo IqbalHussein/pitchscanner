@@ -1,7 +1,9 @@
 # Runtime dependencies for the Vercel function only (api/index.py). The
 # canonical list is backend/pyproject.toml; scipy is left out because nothing
 # imports it. psycopg and pgvector are imported at module level by the store
-# package even with the in-memory store.
+# package even with the in-memory store. scripts/vercel_build.sh installs this same
+# file into a throwaway venv to build the fixture array store when no data release
+# is pinned.
 numpy>=1.26
 fastapi>=0.111
 uvicorn>=0.30

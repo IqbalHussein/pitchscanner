@@ -37,3 +37,4 @@ bench/ci/
 # Vercel CLI link metadata
 .vercel
 .env.local
+api/_data/

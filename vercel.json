@@ -2,12 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "cd frontend && npm ci",
-  "buildCommand": "cd frontend && npm run gen:api && npm run build",
+  "buildCommand": "bash scripts/vercel_build.sh",
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {
       "maxDuration": 30,
-      "includeFiles": "{backend/pitchscanner/**,data/fixtures/**,.data/memory-store.pkl}"
+      "includeFiles": "{backend/pitchscanner/**,api/_data/**,data/fixtures/**}"
     }
   },
   "rewrites": [

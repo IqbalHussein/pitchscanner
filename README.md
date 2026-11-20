@@ -99,16 +99,10 @@ make ingest-real
 `vercel.json`, `api/index.py` and the root `requirements.txt` deploy the app as
 one Vercel project: the Vite build is served statically and the FastAPI app runs
 as a single Python function behind rewrites for `/v1/*`, `/healthz`, `/readyz`,
-`/metrics`, `/docs` and `/openapi.json`. The function uses the in-memory store
-on the fixture data only (no database), loading `.data/memory-store.pkl`, which
-the CLI uploads even though it is gitignored (`.vercelignore` replaces
-`.gitignore` for uploads). If the snapshot is absent, the function rebuilds it
-from `data/fixtures` into `/tmp` on cold start. To redeploy:
-
-```bash
-make ingest               # refresh .data/memory-store.pkl
-vercel deploy --prod      # from the repo root, linked to the project
-```
+`/metrics`, `/docs` and `/openapi.json`. The function serves an array store
+from `api/_data/` (no database), which `scripts/vercel_build.sh` produces during
+the build; see "Full dataset" below. To redeploy: `vercel deploy --prod` from the
+repo root, linked to the project.
 
 ### Serving all of the real data without a database
 
@@ -136,6 +130,38 @@ is simply absent and is not offered by the API. Detail files are read from
 
 On Vercel, `api/index.py` serves the arrays when `PITCHSCANNER_ARRAYS_DIR` is set or a
 store is bundled at `api/_data/`, and the fixtures otherwise.
+
+### Full dataset on Vercel
+
+The deployed site serves a data release, a pinned tarball of an array store, not
+anything checked into git.
+
+1. **Build it.** Run the `build-data` workflow (Actions, "Run workflow"; inputs
+   `competitions`, empty for everything, and `encodings`, default `E1,E2`). It fetches
+   StatsBomb at the pinned commit (blobless, only the matches that have 360 data),
+   ingests into an array store, fails if the result looks wrong (under 1,000,000
+   frames for a full build, no `meta.json`, more than 2 skipped matches), packs it as
+   `pitchscanner-data-<statsbomb7>-<sha7>.tar.gz` (gzip level 1, cut into parts below
+   GitHub's 2 GiB asset limit if needed), and publishes it with a `.sha256` and a
+   `release.json` manifest under the release tag `data-<statsbomb7>-<sha7>`. The job
+   summary has the ingest report and the sizes. About 513 MB is searchable and 417 MB
+   is detail for the full set.
+2. **Pin it.** Copy that release's `release.json` asset over `data/release.json` and
+   commit it. While the file holds `null`, nothing is pinned.
+3. **Deploy.** The Vercel `buildCommand` (`scripts/vercel_build.sh`) builds the frontend,
+   then downloads the pinned release with `curl`, checks every part's sha256 and unpacks
+   it as a stream into `api/_data/`, which `vercel.json` `includeFiles` ships inside the
+   function. With nothing pinned it builds the small fixture array store there
+   instead, so previews and forks run the same arrays code as production. The detail
+   files are read from that bundled directory, so `PITCHSCANNER_DETAIL_BASE_URL` stays unset.
+4. **Large functions.** The full set is far over the default function size limit (about
+   225 MB here). The Vercel project needs the env var `VERCEL_SUPPORT_LARGE_FUNCTIONS=1`
+   for production and preview, which raises it to 5 GiB.
+
+To refresh after bumping `open_data_commit` (or changing the ingest code): merge the
+change, run `build-data` again (the new tag carries the new StatsBomb and code
+commits), replace `data/release.json` with the new manifest, commit and deploy. To roll
+back, restore the previous `data/release.json`; old releases stay downloadable.
 
 One of the 426 three-sixty files (Women's Euro 2022, match 3845506) has a run of NUL
 bytes upstream. When the strict parse fails on a file with NULs, ingest recovers the

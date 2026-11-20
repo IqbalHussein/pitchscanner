@@ -1,5 +1,6 @@
-# Uploaded by `vercel deploy`; this file replaces .gitignore for CLI uploads,
-# so .data/memory-store.pkl (gitignored) is deliberately NOT listed here.
+# Uploaded by `vercel deploy`; this file replaces .gitignore for CLI uploads, so
+# everything gitignored but needed (nothing today) must be absent from this list.
+# api/_data is produced by the build (scripts/vercel_build.sh); never upload a local copy.
 .git
 .venv
 .claude
@@ -18,6 +19,7 @@ frontend/src/lib/api-types.ts
 bench
 docs
 ops
-scripts
 backend/tests
 *.pdf
+api/_data
+api/_data.partial

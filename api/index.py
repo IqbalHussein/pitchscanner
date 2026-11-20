@@ -1,12 +1,14 @@
-"""Vercel entrypoint: the PitchScanner API, on Postgres or in memory.
+"""Vercel entrypoint: the PitchScanner API on a directory of arrays, or on the fixtures.
 
-Only Vercel loads this file. Two modes, chosen by one environment variable:
+Only Vercel loads this file. Two modes, chosen from the environment:
 
-* `PITCHSCANNER_DSN` set (the Supabase transaction-pooler URI, port 6543): serve
-  from Postgres, E1 only. Prepared statements are switched off because a
-  transaction-mode pooler cannot route them. Nothing connects at import time;
-  the store opens its connection on the first request.
-* Not set: serve the checked-in fixture dataset from a pickle snapshot bundled
+* Arrays: `PITCHSCANNER_ARRAYS_DIR` is set, or a store was bundled at
+  `api/_data/meta.json`. The API serves it with `PITCHSCANNER_STORE=arrays`: memory-
+  mapped numpy arrays for search and one detail file per match for the situation
+  and sequence endpoints, read from `<store>/detail` or from
+  `PITCHSCANNER_DETAIL_BASE_URL`. No database. Nothing is loaded at import time
+  beyond opening the files.
+* Otherwise: serve the checked-in fixture dataset from a pickle snapshot bundled
   with the function (see vercel.json), so no database is needed. If the
   snapshot is missing at cold start (for example a Git-based deploy, where the
   gitignored `.data/` is absent), it is rebuilt from `data/fixtures` into /tmp,
@@ -22,13 +24,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-if os.environ.get("PITCHSCANNER_DSN"):
-    os.environ["PITCHSCANNER_STORE"] = "postgres"
-    # The free-plan database holds E1 only (see the README), and the API lists
-    # only encodings that have vectors.
-    os.environ["PITCHSCANNER_ENCODING"] = "E1"
-    # Transaction-mode pooling (port 6543) does not support prepared statements.
-    os.environ["PITCHSCANNER_DB_PREPARE"] = "false"
+_BUNDLED_ARRAYS = Path(__file__).resolve().parent / "_data"
+
+if os.environ.get("PITCHSCANNER_ARRAYS_DIR") or (_BUNDLED_ARRAYS / "meta.json").exists():
+    os.environ["PITCHSCANNER_STORE"] = "arrays"
+    os.environ.setdefault("PITCHSCANNER_ARRAYS_DIR", str(_BUNDLED_ARRAYS))
 else:
     os.environ["PITCHSCANNER_STORE"] = "memory"
 

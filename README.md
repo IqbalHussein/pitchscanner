@@ -110,38 +110,38 @@ make ingest               # refresh .data/memory-store.pkl
 vercel deploy --prod      # from the repo root, linked to the project
 ```
 
-### Serving real data from Supabase
+### Serving all of the real data without a database
 
-The Vercel deployment above serves the fixtures. To serve real StatsBomb data
-instead, point it at a Supabase Postgres (free plan, 500 MB). The full dataset
-does not fit: the free plan holds a **subset of competitions, encoded with E1
-only**, and the API then lists only the encodings that have vectors. The
-ingest job prints the database size and fails above 450 MB, so you hear about
-it before Supabase starts refusing writes.
+The full 360 dataset (about 426 matches and 1.3M frames, StatsBomb open data at
+`4b73468fc5b0f1950f9f66fada70ad3a4f9327cb`) does not fit in the in-memory store and
+does not fit on any free Postgres. The **array store** serves it from files:
 
-Two secrets, two different pooler URIs (Supabase dashboard, Connect, pooler
-tabs). The direct host `db.<ref>.supabase.co` is IPv6-only, which neither
-GitHub runners nor Vercel can reach, so neither secret uses it:
+```bash
+pitchscanner --store arrays ingest --out .data/arrays                 # all competitions
+pitchscanner --store arrays ingest --out .data/arrays --competitions 55:282,9 --encodings E1
+PITCHSCANNER_STORE=arrays PITCHSCANNER_ARRAYS_DIR=.data/arrays make serve
+```
 
-| Where | Name | URI |
-| --- | --- | --- |
-| GitHub repository secret | `SUPABASE_DB_URL` | session pooler, port 5432 (migrations and ingest) |
-| Vercel project env var | `PITCHSCANNER_DSN` | transaction pooler, port 6543 (the serverless function) |
+Ingest streams one match at a time into column buffers and writes the directory when
+it finishes, so memory stays far below the size of the dataset. The directory holds
+memory-mapped `.npy` files (a packed column per filter field, one vector file per
+encoding, a sorted table of event ids, outcomes) plus `detail/<match_id>.json.gz` with
+the players, camera polygon and events of each match. Search is exact: a boolean mask
+from the filter columns, then distances over the surviving rows only, in chunks.
+Vectors default to float32 for E1 and float16 for E0 and E2
+(`PITCHSCANNER_ARRAYS_DTYPES=E1=float32,E2=float16`); an encoding that was not ingested
+is simply absent and is not offered by the API. Detail files are read from
+`<dir>/detail`, or from `PITCHSCANNER_DETAIL_BASE_URL` (a directory of
+`<match_id>.json.gz` files) when set.
 
-Then run **Actions, ingest-supabase, Run workflow** with the competitions to
-load, as `competition_id` or `competition_id:season_id`, comma-separated
-(`55:282,9`), and leave encodings at `E1`. It migrates the schema, fetches
-only those matches' `events/` and `three-sixty/` files, ingests them, and
-reports table sizes. Start with a small selection or a `limit`, check the size,
-then add more. The same thing runs locally with
-`pitchscanner --store postgres ingest --competitions 55:282,9 --encodings E1`.
+On Vercel, `api/index.py` serves the arrays when `PITCHSCANNER_ARRAYS_DIR` is set or a
+store is bundled at `api/_data/`, and the fixtures otherwise.
 
-With `PITCHSCANNER_DSN` set, `api/index.py` serves from Postgres (E1) and turns
-prepared statements off, which the transaction pooler cannot route; the same
-switch is `PITCHSCANNER_DB_PREPARE=false` for anything else behind a
-transaction-mode pooler. Without it, the function serves the fixtures as before.
-Free Supabase projects **pause after a week of inactivity**; a paused project
-makes `/readyz` return 503 until you restore it in the dashboard.
+One of the 426 three-sixty files (Women's Euro 2022, match 3845506) has a run of NUL
+bytes upstream. When the strict parse fails on a file with NULs, ingest recovers the
+complete frames either side of the damage, records a reject (`salvaged three-sixty
+file: recovered N frames, lost ~M`) and counts `matches_salvaged`. Any other unreadable
+file still skips its match, and `--fail-on-bad-file` still aborts.
 
 ## The three encodings
 

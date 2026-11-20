@@ -84,13 +84,90 @@ make web       # frontend on :5173
 ```
 
 To run against the real dataset instead of the fixtures, point it at Postgres
-and let it fetch StatsBomb open data at the pinned commit:
+and let it fetch StatsBomb open data at the pinned commit
+(`4b73468fc5b0f1950f9f66fada70ad3a4f9327cb`, overridable with
+`PITCHSCANNER_OPEN_DATA_COMMIT`):
 
 ```bash
 docker compose up -d db
 make migrate
 make ingest-real
 ```
+
+## Deploying to Vercel
+
+`vercel.json`, `api/index.py` and the root `requirements.txt` deploy the app as
+one Vercel project: the Vite build is served statically and the FastAPI app runs
+as a single Python function behind rewrites for `/v1/*`, `/healthz`, `/readyz`,
+`/metrics`, `/docs` and `/openapi.json`. The function serves an array store
+from `api/_data/` (no database), which `scripts/vercel_build.sh` produces during
+the build; see "Full dataset" below. To redeploy: `vercel deploy --prod` from the
+repo root, linked to the project.
+
+### Serving all of the real data without a database
+
+The full 360 dataset (about 426 matches and 1.3M frames, StatsBomb open data at
+`4b73468fc5b0f1950f9f66fada70ad3a4f9327cb`) does not fit in the in-memory store and
+does not fit on any free Postgres. The **array store** serves it from files:
+
+```bash
+pitchscanner --store arrays ingest --out .data/arrays                 # all competitions
+pitchscanner --store arrays ingest --out .data/arrays --competitions 55:282,9 --encodings E1
+PITCHSCANNER_STORE=arrays PITCHSCANNER_ARRAYS_DIR=.data/arrays make serve
+```
+
+Ingest streams one match at a time into column buffers and writes the directory when
+it finishes, so memory stays far below the size of the dataset. The directory holds
+memory-mapped `.npy` files (a packed column per filter field, one vector file per
+encoding, a sorted table of event ids, outcomes) plus `detail/<match_id>.json.gz` with
+the players, camera polygon and events of each match. Search is exact: a boolean mask
+from the filter columns, then distances over the surviving rows only, in chunks.
+Vectors default to float32 for E1 and float16 for E0 and E2
+(`PITCHSCANNER_ARRAYS_DTYPES=E1=float32,E2=float16`); an encoding that was not ingested
+is simply absent and is not offered by the API. Detail files are read from
+`<dir>/detail`, or from `PITCHSCANNER_DETAIL_BASE_URL` (a directory of
+`<match_id>.json.gz` files) when set.
+
+On Vercel, `api/index.py` serves the arrays when `PITCHSCANNER_ARRAYS_DIR` is set or a
+store is bundled at `api/_data/`, and the fixtures otherwise.
+
+### Full dataset on Vercel
+
+The deployed site serves a data release, a pinned tarball of an array store, not
+anything checked into git.
+
+1. **Build it.** Run the `build-data` workflow (Actions, "Run workflow"; inputs
+   `competitions`, empty for everything, and `encodings`, default `E1,E2`). It fetches
+   StatsBomb at the pinned commit (blobless, only the matches that have 360 data),
+   ingests into an array store, fails if the result looks wrong (under 1,000,000
+   frames for a full build, no `meta.json`, more than 2 skipped matches), packs it as
+   `pitchscanner-data-<statsbomb7>-<sha7>.tar.gz` (gzip level 1, cut into parts below
+   GitHub's 2 GiB asset limit if needed), and publishes it with a `.sha256` and a
+   `release.json` manifest under the release tag `data-<statsbomb7>-<sha7>`. The job
+   summary has the ingest report and the sizes. About 513 MB is searchable and 417 MB
+   is detail for the full set.
+2. **Pin it.** Copy that release's `release.json` asset over `data/release.json` and
+   commit it. While the file holds `null`, nothing is pinned.
+3. **Deploy.** The Vercel `buildCommand` (`scripts/vercel_build.sh`) builds the frontend,
+   then downloads the pinned release with `curl`, checks every part's sha256 and unpacks
+   it as a stream into `api/_data/`, which `vercel.json` `includeFiles` ships inside the
+   function. With nothing pinned it builds the small fixture array store there
+   instead, so previews and forks run the same arrays code as production. The detail
+   files are read from that bundled directory, so `PITCHSCANNER_DETAIL_BASE_URL` stays unset.
+4. **Large functions.** The full set is far over the default function size limit (about
+   225 MB here). The Vercel project needs the env var `VERCEL_SUPPORT_LARGE_FUNCTIONS=1`
+   for production and preview, which raises it to 5 GiB.
+
+To refresh after bumping `open_data_commit` (or changing the ingest code): merge the
+change, run `build-data` again (the new tag carries the new StatsBomb and code
+commits), replace `data/release.json` with the new manifest, commit and deploy. To roll
+back, restore the previous `data/release.json`; old releases stay downloadable.
+
+One of the 426 three-sixty files (Women's Euro 2022, match 3845506) has a run of NUL
+bytes upstream. When the strict parse fails on a file with NULs, ingest recovers the
+complete frames either side of the damage, records a reject (`salvaged three-sixty
+file: recovered N frames, lost ~M`) and counts `matches_salvaged`. Any other unreadable
+file still skips its match, and `--fail-on-bad-file` still aborts.
 
 ## The three encodings
 

@@ -33,3 +33,8 @@ bench/reports/rejects.jsonl
 
 # CI writes a throwaway benchmark here; only bench/reports/ is committed.
 bench/ci/
+
+# Vercel CLI link metadata
+.vercel
+.env.local
+api/_data/

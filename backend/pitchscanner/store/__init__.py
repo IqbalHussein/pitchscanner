@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pitchscanner.config import Settings, get_settings
+from pitchscanner.store.arrays import ArrayStore, DetailUnavailableError
 from pitchscanner.store.base import Candidate, CatalogueEntry, Counts, FrameMeta, Store
 from pitchscanner.store.memory import MemoryStore
 from pitchscanner.store.postgres import PostgresStore
@@ -21,14 +22,18 @@ def make_store(settings: Settings | None = None) -> Store:
         if path.exists():
             return MemoryStore.load(path)
         return MemoryStore()
-    return PostgresStore(cfg.dsn, ef_search=cfg.hnsw_ef_search, probes=cfg.ivfflat_probes)
+    if cfg.store == "arrays":
+        return ArrayStore.from_settings(cfg)
+    return PostgresStore.from_settings(cfg)
 
 
 __all__ = [
     "MEMORY_SNAPSHOT",
+    "ArrayStore",
     "Candidate",
     "CatalogueEntry",
     "Counts",
+    "DetailUnavailableError",
     "FrameMeta",
     "MemoryStore",
     "PostgresStore",

@@ -19,6 +19,7 @@ from pitchscanner.api.deps import AppState
 from pitchscanner.api.routes import router
 from pitchscanner.config import Settings, get_settings
 from pitchscanner.logging_setup import configure_logging, get_logger, request_id_var
+from pitchscanner.store.arrays import DetailUnavailableError
 from pitchscanner.store.base import Store
 
 log = get_logger(__name__)
@@ -124,6 +125,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
         return JSONResponse(
             status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))}
         )
+
+    @app.exception_handler(DetailUnavailableError)
+    async def detail_unavailable(request: Request, exc: DetailUnavailableError) -> JSONResponse:
+        # The searchable arrays are fine; only the per-match detail file is not.
+        metrics.ERRORS.labels(kind="detail").inc()
+        log.error("detail_unavailable", error=str(exc))
+        return JSONResponse(status_code=503, content={"detail": "match detail unavailable"})
 
     app.include_router(router)
     return app

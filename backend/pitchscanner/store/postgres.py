@@ -19,6 +19,7 @@ from psycopg import Cursor, sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from pitchscanner.config import Settings
 from pitchscanner.geometry import PlayerPos, Point
 from pitchscanner.models import (
     EventRecord,
@@ -66,23 +67,53 @@ def _set_local(cur: Cursor[Any], name: str, value: object) -> None:
     placeholder reaches the server verbatim ("syntax error at or near $1").
     ``set_config`` is a function, so it does take one - which keeps the value
     parameterised instead of interpolated into SQL.
+
+    "Current transaction" is the point: the caller must already be inside
+    ``conn.transaction()``. The connection is in autocommit mode, where every
+    statement is its own transaction, so a bare call here would be rolled off
+    before the query ran and the setting would silently never apply. Scoping it
+    to a transaction is also what makes it safe behind a transaction-mode
+    pooler, which may hand the next statement to a different server connection
+    but keeps one transaction on one.
     """
 
     cur.execute("SELECT set_config(%s, %s, true)", (name, str(value)))
 
 
 class PostgresStore:
-    def __init__(self, dsn: str, *, ef_search: int = 80, probes: int = 20) -> None:
+    def __init__(
+        self, dsn: str, *, ef_search: int = 80, probes: int = 20, prepare: bool = True
+    ) -> None:
         self.dsn = dsn
         self.ef_search = ef_search
         self.probes = probes
+        #: False turns psycopg's automatic server-side prepared statements off.
+        #: Required behind a transaction-mode pooler (Supavisor, port 6543),
+        #: which cannot route a prepared statement to the connection that holds it.
+        self.prepare = prepare
         self._conn: psycopg.Connection[Any] | None = None
+
+    @classmethod
+    def from_settings(cls, cfg: Settings) -> PostgresStore:
+        return cls(
+            cfg.dsn,
+            ef_search=cfg.hnsw_ef_search,
+            probes=cfg.ivfflat_probes,
+            prepare=cfg.db_prepare,
+        )
 
     # --- plumbing ----------------------------------------------------------
     @property
     def conn(self) -> psycopg.Connection[Any]:
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg.connect(self.dsn, row_factory=dict_row, autocommit=True)
+            self._conn = psycopg.connect(
+                self.dsn,
+                row_factory=dict_row,
+                autocommit=True,
+                # None = never auto-prepare (the default is to prepare a query
+                # on its 6th execution).
+                prepare_threshold=5 if self.prepare else None,
+            )
         return self._conn
 
     def close(self) -> None:
@@ -481,6 +512,16 @@ class PostgresStore:
             cur.execute("SELECT * FROM frames WHERE event_id = ANY(%s)", (list(event_ids),))
             return {str(r["event_id"]): _frame_from_row(r) for r in cur.fetchall()}
 
+    def mirrored_flags(self, event_ids: Sequence[str]) -> dict[str, bool]:
+        if not event_ids:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT event_id, mirrored FROM frames WHERE event_id = ANY(%s)",
+                (list(event_ids),),
+            )
+            return {str(r["event_id"]): bool(r["mirrored"]) for r in cur.fetchall()}
+
     def frames(self, limit: int | None = None) -> list[FrameRecord]:
         q = "SELECT * FROM frames ORDER BY match_id, possession_id"
         if limit:
@@ -603,7 +644,7 @@ class PostgresStore:
             tbl=tbl,
             where=sql.SQL("WHERE " + where) if where else sql.SQL(""),
         )
-        with self.conn.cursor() as cur:
+        with self.conn.transaction(), self.conn.cursor() as cur:
             if exact:
                 # Turning the scans off is what makes this the ground truth.
                 _set_local(cur, "enable_indexscan", "off")

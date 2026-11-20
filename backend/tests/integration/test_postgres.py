@@ -259,3 +259,128 @@ def test_vector_counts_per_encoding(pg_store: PostgresStore) -> None:
     assert all(n > 0 for n in counts.values())
     assert sum(counts.values()) == pg_store.counts().vectors
     assert pg_store.effective_index_kind is None
+
+
+# --- transaction-pooler safety (Supabase port 6543) ---------------------------
+
+
+def _prepared(store: PostgresStore) -> int:
+    with store.conn.cursor() as cur:
+        cur.execute("SELECT count(*) AS n FROM pg_prepared_statements")
+        row = cur.fetchone()
+    return int(row["n"]) if row else -1
+
+
+def _search_repeatedly(store: PostgresStore, times: int = 12) -> None:
+    encoder = get_encoder("E1")
+    vector = encoder.encode(store.frames(limit=1)[0].to_situation())
+    for _ in range(times):  # well past psycopg's prepare_threshold of 5
+        store.ann_search(encoder.version, vector, 5, encoder.metric)
+        store.count_matching(encoder.version, None)
+        store.counts()
+
+
+def test_default_connection_prepares_repeated_statements(pg_dsn: str) -> None:
+    """The control for the next test: without it the assertion proves nothing."""
+
+    store = PostgresStore(pg_dsn)
+    try:
+        _search_repeatedly(store)
+        assert _prepared(store) > 0
+    finally:
+        store.close()
+
+
+def test_prepare_off_never_prepares_even_when_ingesting(pg_dsn: str) -> None:
+    settings = Settings(store="postgres", dsn=pg_dsn, fixture_dir=FIXTURE_DIR, db_prepare=False)
+    store = PostgresStore.from_settings(settings)
+    assert store.prepare is False
+    try:
+        ingest(FIXTURE_DIR, store, settings=settings, limit_matches=1, encodings=["E1"])
+        _search_repeatedly(store)
+        assert _prepared(store) == 0
+    finally:
+        store.close()
+
+
+def test_search_settings_hold_for_the_query(
+    pg_store: PostgresStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """hnsw.ef_search and the exact-scan switches must be live while the search
+    runs. With autocommit on, a bare set_config(..., true) is gone before the
+    next statement, so this was silently never applied."""
+
+    from pitchscanner.store import postgres as pgmod
+
+    seen: dict[str, str] = {}
+    real = pgmod._set_local
+
+    def spy(cur, name, value):  # type: ignore[no-untyped-def]
+        real(cur, name, value)
+        cur.execute("SELECT current_setting(%s) AS v", (name,))
+        seen[name] = cur.fetchone()["v"]
+
+    monkeypatch.setattr(pgmod, "_set_local", spy)
+    encoder = get_encoder("E1")
+    vector = encoder.encode(pg_store.frames(limit=1)[0].to_situation())
+    store = PostgresStore(pg_store.dsn, ef_search=33, probes=7)
+    try:
+        store.ann_search(encoder.version, vector, 5, encoder.metric)
+        assert seen == {"hnsw.ef_search": "33", "ivfflat.probes": "7"}
+        seen.clear()
+        store.exact_search(encoder.version, vector, 5, encoder.metric)
+        assert seen == {"enable_indexscan": "off", "enable_bitmapscan": "off"}
+        # And nothing leaks into the connection afterwards.
+        with store.conn.cursor() as cur:
+            cur.execute("SELECT current_setting('enable_indexscan') AS v")
+            assert cur.fetchone()["v"] == "on"
+    finally:
+        store.close()
+
+
+@pytest.fixture
+def e1_only_dsn(pg_dsn: str) -> Iterator[str]:
+    """A scratch database holding the fixtures ingested for E1 only."""
+
+    import uuid
+
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    name = f"codewk_e1only_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(pg_dsn, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    dsn = make_conninfo(pg_dsn, dbname=name)
+    try:
+        yield dsn
+    finally:
+        with psycopg.connect(pg_dsn, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_api_offers_only_encodings_with_vectors(e1_only_dsn: str) -> None:
+    from fastapi.testclient import TestClient
+
+    from pitchscanner.api import create_app
+
+    settings = Settings(
+        store="postgres", dsn=e1_only_dsn, fixture_dir=FIXTURE_DIR, db_prepare=False
+    )
+    store = PostgresStore.from_settings(settings)
+    ingest(FIXTURE_DIR, store, settings=settings, limit_matches=2, encodings=["E1"])
+    assert list(store.vector_counts()) == ["E1-v1"]
+    sketch = {
+        "ball": {"x": 90.0, "y": 40.0},
+        "attackers": [{"x": 92.0, "y": 38.0}],
+        "defenders": [{"x": 100.0, "y": 40.0}],
+        "k": 5,
+    }
+    with TestClient(create_app(settings=settings, store=store)) as client:
+        assert client.get("/v1/filters").json()["encodings"] == ["E1"]
+        assert client.get("/v1/meta").json()["encodings"] == ["E1"]
+        assert client.post("/v1/search", json=sketch).status_code == 200
+        for name in ("E0", "E2"):
+            r = client.post("/v1/search", json={**sketch, "options": {"encoding": name}})
+            assert r.status_code == 422
+            assert "has no vectors" in r.json()["detail"]
+    assert _prepared(store) == 0

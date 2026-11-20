@@ -2,13 +2,51 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 
 from pitchscanner.geometry import N_ZONES, zone_id
 from pitchscanner.models import FrameRecord, OutcomeRecord, ZoneBaseline
 
 BASELINE_FIELDS = ("shot_rate", "xg_mean", "goal_rate", "turnover_rate", "box_entry_rate")
+
+
+class ZoneAccumulator:
+    """Per-zone tallies, so baselines need no list of every frame record.
+
+    The yes/no outcomes are exact integer counts. xG is kept as a list of floats per
+    zone and summed with ``sum()`` at the end, because Python's compensated ``sum``
+    and a running ``+=`` differ in the last digit, and the baselines should be
+    bit-for-bit what they were when computed from the full list of frames.
+    """
+
+    def __init__(self) -> None:
+        self.n = [0] * N_ZONES
+        self._counts = {f: [0] * N_ZONES for f in BASELINE_FIELDS if f != "xg_mean"}
+        self._xg: list[list[float]] = [[] for _ in range(N_ZONES)]
+
+    def add(self, frames: Iterable[FrameRecord], outcomes: Mapping[str, OutcomeRecord]) -> None:
+        for f in frames:
+            o = outcomes.get(f.event_id)
+            if o is None:
+                continue
+            z = zone_id(f.ball_x, f.ball_y)
+            self.n[z] += 1
+            self._counts["shot_rate"][z] += o.shot
+            self._xg[z].append(o.xg_next)
+            self._counts["goal_rate"][z] += o.goal
+            self._counts["turnover_rate"][z] += o.turnover
+            self._counts["box_entry_rate"][z] += o.box_entry
+
+    def baselines(self, encoding_version: str) -> list[ZoneBaseline]:
+        out: list[ZoneBaseline] = []
+        for zone in range(N_ZONES):
+            n = self.n[zone]
+            rates = {f: (c[zone] / n if n else 0.0) for f, c in self._counts.items()}
+            rates["xg_mean"] = sum(self._xg[zone]) / n if n else 0.0
+            out.append(
+                ZoneBaseline(zone_id=zone, encoding_version=encoding_version, n=n, **rates)
+            )
+        return out
 
 
 def compute_zone_baselines(
@@ -19,43 +57,9 @@ def compute_zone_baselines(
 ) -> list[ZoneBaseline]:
     """Unweighted averages per zone over every labelled frame."""
 
-    buckets: dict[int, list[OutcomeRecord]] = defaultdict(list)
-    for f in frames:
-        o = outcomes.get(f.event_id)
-        if o is not None:
-            buckets[zone_id(f.ball_x, f.ball_y)].append(o)
-
-    out: list[ZoneBaseline] = []
-    for zone in range(N_ZONES):
-        rows = buckets.get(zone, [])
-        n = len(rows)
-        if n == 0:
-            out.append(
-                ZoneBaseline(
-                    zone_id=zone,
-                    encoding_version=encoding_version,
-                    n=0,
-                    shot_rate=0.0,
-                    xg_mean=0.0,
-                    goal_rate=0.0,
-                    turnover_rate=0.0,
-                    box_entry_rate=0.0,
-                )
-            )
-            continue
-        out.append(
-            ZoneBaseline(
-                zone_id=zone,
-                encoding_version=encoding_version,
-                n=n,
-                shot_rate=sum(r.shot for r in rows) / n,
-                xg_mean=sum(r.xg_next for r in rows) / n,
-                goal_rate=sum(r.goal for r in rows) / n,
-                turnover_rate=sum(r.turnover for r in rows) / n,
-                box_entry_rate=sum(r.box_entry for r in rows) / n,
-            )
-        )
-    return out
+    acc = ZoneAccumulator()
+    acc.add(frames, outcomes)
+    return acc.baselines(encoding_version)
 
 
 def as_mapping(baselines: Iterable[ZoneBaseline]) -> dict[int, dict[str, float]]:

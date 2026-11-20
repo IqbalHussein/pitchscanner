@@ -21,16 +21,37 @@ class Settings(BaseSettings):
         default="postgresql://pitchscanner:pitchscanner@localhost:5432/pitchscanner",
         description="Postgres DSN. Ignored when store=memory.",
     )
+    db_prepare: bool = Field(
+        default=True,
+        description="Let psycopg auto-prepare statements. Set PITCHSCANNER_DB_PREPARE=false "
+        "behind a transaction-mode pooler (Supabase port 6543), which does not support them.",
+    )
     store: str = Field(
         default="postgres",
-        description="'postgres' for the real thing, 'memory' for tests and the offline demo.",
+        description="'postgres' for the real thing, 'memory' for tests and the offline demo, "
+        "'arrays' for a directory of memory-mapped numpy arrays (no database).",
+    )
+    arrays_dir: Path | None = Field(
+        default=None,
+        description="Directory written by `pitchscanner ingest --store arrays --out DIR`. "
+        "Read when store=arrays.",
+    )
+    detail_base_url: str | None = Field(
+        default=None,
+        description="Fetch per-match detail files (`<match_id>.json.gz`) from this http(s) "
+        "base URL instead of `<arrays_dir>/detail`.",
+    )
+    detail_timeout_s: float = Field(default=10.0, description="Per request, in URL mode.")
+    arrays_dtypes: str = Field(
+        default="E0=float16,E1=float32,E2=float16",
+        description="Vector precision per encoding when writing an array store.",
     )
     fixture_dir: Path = Field(default=REPO_ROOT / "data" / "fixtures" / "statsbomb")
 
     # --- data --------------------------------------------------------------
     open_data_repo: str = "https://github.com/statsbomb/open-data.git"
     #: Pinned so every build ingests byte-identical input.
-    open_data_commit: str = "0067cae166a56aa80b2ef18f61e16158d6a7359a"
+    open_data_commit: str = "4b73468fc5b0f1950f9f66fada70ad3a4f9327cb"
     data_cache: Path = Field(default=REPO_ROOT / ".data" / "open-data")
 
     # --- encoding and search ----------------------------------------------

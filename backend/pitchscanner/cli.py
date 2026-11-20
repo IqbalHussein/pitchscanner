@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from pitchscanner.config import get_settings
+from pitchscanner.ingest.selection import CompetitionSelector, parse_competitions
 from pitchscanner.logging_setup import configure_logging, get_logger
 from pitchscanner.store.base import Store
 
@@ -20,25 +21,46 @@ log = get_logger(__name__)
 
 
 def _store(args: argparse.Namespace) -> tuple[Store, Path | None]:
-    from pitchscanner.store import MEMORY_SNAPSHOT, MemoryStore, PostgresStore
+    from pitchscanner.store import MEMORY_SNAPSHOT, ArrayStore, MemoryStore, PostgresStore
+    from pitchscanner.store.arrays import parse_dtype_spec
 
     cfg = get_settings()
+    if args.store == "arrays":
+        # Ingest streams into a new store directory; every other command reads one.
+        if args.command == "ingest":
+            if not args.out:
+                raise SystemExit("--store arrays ingest needs --out DIR")
+            return ArrayStore.create(args.out, dtypes=parse_dtype_spec(cfg.arrays_dtypes)), None
+        return ArrayStore.from_settings(cfg), None
     if args.store == "memory":
         path = Path(cfg.data_cache).parent / MEMORY_SNAPSHOT.name
         if getattr(args, "reuse", False) and path.exists():
             return MemoryStore.load(path), path
         return MemoryStore(), path
-    return PostgresStore(cfg.dsn, ef_search=cfg.hnsw_ef_search, probes=cfg.ivfflat_probes), None
+    return PostgresStore.from_settings(cfg), None
+
+
+def _competitions_arg(value: str) -> tuple[CompetitionSelector, ...]:
+    try:
+        return parse_competitions(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     from pitchscanner.ingest import fetch_open_data, ingest, write_reject_log
+    from pitchscanner.store.arrays import ArrayStore
     from pitchscanner.store.memory import MemoryStore
 
     cfg = get_settings()
+    competitions = args.competitions
     data_dir = Path(args.data_dir) if args.data_dir else None
     if data_dir is None:
-        data_dir = Path(cfg.fixture_dir) if args.fixtures else fetch_open_data(cfg)
+        data_dir = (
+            Path(cfg.fixture_dir)
+            if args.fixtures
+            else fetch_open_data(cfg, competitions=competitions)
+        )
     store, snapshot = _store(args)
 
     report = ingest(
@@ -47,14 +69,33 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         settings=cfg,
         encodings=args.encodings.split(",") if args.encodings else None,
         limit_matches=args.limit,
+        competitions=competitions,
+        fail_on_bad_file=args.fail_on_bad_file,
     )
     rejects = write_reject_log(report.rejects, Path(args.reject_log))
     if snapshot is not None and isinstance(store, MemoryStore):
         store.save(snapshot)
         log.info("snapshot_written", path=str(snapshot))
+    arrays_summary: dict[str, object] | None = None
+    if isinstance(store, ArrayStore):
+        source = "fixtures" if args.fixtures else str(data_dir)
+        arrays_summary = store.finalize(
+            extra_meta={
+                "source": source,
+                "open_data_commit": None if args.fixtures else cfg.open_data_commit,
+                "encodings_requested": args.encodings,
+            }
+        )
+        arrays_summary.pop("files", None)
     print(
         json.dumps(
-            {**report.as_dict(), "reject_log": args.reject_log, "rejects": rejects}, indent=2
+            {
+                **report.as_dict(),
+                "reject_log": args.reject_log,
+                "rejects": rejects,
+                **({"arrays": arrays_summary} if arrays_summary else {}),
+            },
+            indent=2,
         )
     )
     return 0
@@ -157,7 +198,7 @@ def cmd_openapi(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pitchscanner")
     parser.add_argument(
-        "--store", choices=("postgres", "memory"), default=get_settings().store
+        "--store", choices=("postgres", "memory", "arrays"), default=get_settings().store
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -166,7 +207,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fixtures", action="store_true", help="use the checked-in fixtures")
     p.add_argument("--limit", type=int, default=None, help="stop after N matches")
     p.add_argument("--encodings", default=None, help="comma-separated, default all")
+    p.add_argument(
+        "--competitions",
+        type=_competitions_arg,
+        default=None,
+        help="comma-separated competition_id or competition_id:season_id entries "
+        "(e.g. 55:282,9); only those matches are fetched and ingested",
+    )
+    p.add_argument("--out", help="with --store arrays: the directory to write the store into")
     p.add_argument("--reject-log", default="bench/reports/rejects.jsonl")
+    p.add_argument(
+        "--fail-on-bad-file",
+        action="store_true",
+        help="abort on an unreadable events/three-sixty file instead of skipping its match",
+    )
     p.set_defaults(func=cmd_ingest)
 
     p = sub.add_parser("serve", help="run the API")

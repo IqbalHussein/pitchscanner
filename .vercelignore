@@ -1,0 +1,25 @@
+# Uploaded by `vercel deploy`; this file replaces .gitignore for CLI uploads, so
+# everything gitignored but needed (nothing today) must be absent from this list.
+# api/_data is produced by the build (scripts/vercel_build.sh); never upload a local copy.
+.git
+.venv
+.claude
+.github
+**/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+frontend/src/lib/api-types.ts
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.vercel
+.env
+bench
+docs
+ops
+backend/tests
+*.pdf
+api/_data
+api/_data.partial

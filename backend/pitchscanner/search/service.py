@@ -200,11 +200,12 @@ class SearchService:
         # Four batched reads, not four per result. Fetching the match and the
         # frame inside the loop cost one round trip each per hit, which on
         # Postgres put this stage at ~27ms p95 against a 10ms budget while the
-        # search itself took 3ms.
+        # search itself took 3ms. The "frame" read is only the mirrored flag: the
+        # players and polygon are not needed to list results.
         matches = self.store.matches_by_id(
             sorted({m.match_id for m in metas.values()})
         )
-        frames = self.store.frames_by_id(event_ids)
+        mirrored = self.store.mirrored_flags(event_ids)
 
         results: list[SearchResult] = []
         for c in candidates:
@@ -212,7 +213,6 @@ class SearchService:
             if meta is None:
                 continue
             match = matches.get(meta.match_id)
-            frame = frames.get(c.event_id)
             if match is None:
                 continue
             o = outcomes.get(c.event_id)
@@ -234,7 +234,7 @@ class SearchService:
                     period=meta.period,
                     possession_id=meta.possession_id,
                     team=team,
-                    mirrored=bool(frame.mirrored) if frame else False,
+                    mirrored=mirrored.get(c.event_id, False),
                     outcome=Outcome(**o.model_dump(exclude={"event_id"})) if o else None,
                 )
             )

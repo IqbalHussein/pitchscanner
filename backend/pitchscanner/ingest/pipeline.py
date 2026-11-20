@@ -6,6 +6,7 @@ rerunning after a failure converges on the same database instead of duplicating.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -13,20 +14,22 @@ from pathlib import Path
 
 import numpy as np
 
-from pitchscanner.baselines import compute_zone_baselines
+from pitchscanner.baselines import ZoneAccumulator
 from pitchscanner.config import Settings, get_settings
 from pitchscanner.encoders import available, encode_many, get_encoder
-from pitchscanner.ingest.catalogue import build_catalogue
+from pitchscanner.ingest.catalogue import CatalogueBuilder
 from pitchscanner.ingest.normalize import frame_meta, normalise_frame
 from pitchscanner.ingest.parse import (
     Reject,
     parse_events,
     parse_frames,
     parse_matches,
+    read_frames_tolerant,
 )
+from pitchscanner.ingest.selection import CompetitionSelector, is_selected
 from pitchscanner.labeller import label_match
 from pitchscanner.logging_setup import get_logger
-from pitchscanner.models import EventRecord, FrameRecord, MatchRecord
+from pitchscanner.models import FrameRecord
 from pitchscanner.store.base import FrameMeta, Store
 
 log = get_logger(__name__)
@@ -38,6 +41,8 @@ class IngestReport:
     events: int = 0
     frames: int = 0
     outcomes: int = 0
+    matches_skipped: int = 0
+    matches_salvaged: int = 0
     vectors: dict[str, int] = field(default_factory=dict)
     rejects: list[Reject] = field(default_factory=list)
     seconds: float = 0.0
@@ -53,6 +58,8 @@ class IngestReport:
             "events": self.events,
             "frames": self.frames,
             "outcomes": self.outcomes,
+            "matches_skipped": self.matches_skipped,
+            "matches_salvaged": self.matches_salvaged,
             "vectors": self.vectors,
             "rejects": len(self.rejects),
             "seconds": round(self.seconds, 2),
@@ -79,6 +86,16 @@ def _match_files(data_dir: Path) -> list[tuple[Path, int, int]]:
     return out
 
 
+def _describe_data_error(exc: ValueError) -> str:
+    """A short, stable description of a parse/decode failure."""
+
+    if isinstance(exc, json.JSONDecodeError):
+        return f"JSONDecodeError at line {exc.lineno} col {exc.colno}"
+    if isinstance(exc, UnicodeDecodeError):
+        return f"UnicodeDecodeError at byte {exc.start}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def ingest(
     data_dir: Path,
     store: Store,
@@ -86,21 +103,51 @@ def ingest(
     settings: Settings | None = None,
     encodings: Sequence[str] | None = None,
     limit_matches: int | None = None,
+    competitions: Sequence[CompetitionSelector] | None = None,
     only_with_frames: bool = True,
+    fail_on_bad_file: bool = False,
 ) -> IngestReport:
-    """Run the whole offline side over a data directory."""
+    """Run the whole offline side over a data directory.
+
+    ``competitions`` restricts which matches files are read at all; ``limit_matches``
+    then counts only within that selection.
+
+    A match whose events or three-sixty file cannot be read or parsed (corrupt or
+    truncated JSON, undecodable bytes) is skipped whole: nothing is written for it,
+    a ``Reject`` and a warning are recorded and ``matches_skipped`` is incremented.
+    ``fail_on_bad_file=True`` re-raises instead. Only data errors qualify; any other
+    exception is a bug and propagates.
+
+    One exception for three-sixty files: if the strict parse fails and the file
+    contains NUL bytes, the complete frame objects either side of the damage are
+    recovered (``parse.read_frames_tolerant``) and the match is ingested with them,
+    recording a reject and ``matches_salvaged``. Events files are always strict.
+    """
 
     cfg = settings or get_settings()
     started = time.perf_counter()
     report = IngestReport()
     store.init_schema()
 
-    all_matches: list[MatchRecord] = []
-    all_events: list[EventRecord] = []
-    all_frames: list[FrameRecord] = []
-    all_metas: list[FrameMeta] = []
+    # Nothing per frame is kept across matches: the catalogue and the zone
+    # baselines are running aggregates, and each match's vectors are encoded as
+    # soon as the match is parsed. A store that can take vectors a match at a time
+    # (``streaming_vectors``, the array store) gets them immediately; the others
+    # get one call per encoding at the end, as they always did.
+    encoders = [get_encoder(e) for e in tuple(encodings or available())]
+    streaming = bool(getattr(store, "streaming_vectors", False))
+    pending: dict[str, list[tuple[str, np.ndarray]]] = {e.version: [] for e in encoders}
+    catalogue = CatalogueBuilder()
+    zones = ZoneAccumulator()
 
-    for season_file, competition_id, season_id in _match_files(data_dir):
+    season_files = [
+        f for f in _match_files(data_dir) if is_selected(competitions, f[1], f[2])
+    ]
+    if competitions and not season_files:
+        wanted = ",".join(str(c) for c in competitions)
+        raise ValueError(f"no matches files under {data_dir} for competitions {wanted}")
+
+    for season_file, competition_id, season_id in season_files:
         matches, rejects = parse_matches(
             season_file, competition_id=competition_id, season_id=season_id
         )
@@ -115,14 +162,54 @@ def ingest(
             if limit_matches is not None and report.matches >= limit_matches:
                 break
 
-            events, goals, ev_rejects = parse_events(events_path, match.match_id)
+            # Everything for the match is parsed before anything is stored, so a
+            # bad file skips the match whole instead of leaving a partial one.
+            current = events_path
+            try:
+                events, goals, ev_rejects = parse_events(events_path, match.match_id)
+                events_by_id = {e.event_id: e for e in events}
+                frames: list[FrameRecord] = []
+                fr_rejects: list[Reject] = []
+                if frames_path.exists():
+                    current = frames_path
+                    try:
+                        frames, fr_rejects = parse_frames(
+                            frames_path, match.match_id, events_by_id
+                        )
+                    except json.JSONDecodeError:
+                        # Strict first, tolerant only after it fails, and never under
+                        # --fail-on-bad-file. Only NUL damage qualifies; anything else
+                        # re-raises into the skip below.
+                        recovered = None if fail_on_bad_file else read_frames_tolerant(frames_path)
+                        if recovered is None:
+                            raise
+                        raw_frames, salvage = recovered
+                        frames, fr_rejects = parse_frames(
+                            frames_path, match.match_id, events_by_id, raw_frames=raw_frames
+                        )
+                        fr_rejects.insert(
+                            0, Reject(str(frames_path), salvage.reason, match.match_id)
+                        )
+                        report.matches_salvaged += 1
+                        log.warning(
+                            "match_salvaged",
+                            match_id=match.match_id,
+                            path=str(frames_path),
+                            reason=salvage.reason,
+                        )
+            except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError included
+                if fail_on_bad_file:
+                    raise
+                kind = "events" if current == events_path else "three-sixty"
+                reason = f"unreadable {kind} file: {_describe_data_error(exc)}"
+                report.rejects.append(Reject(str(current), reason, match.match_id))
+                report.matches_skipped += 1
+                log.warning(
+                    "match_skipped", match_id=match.match_id, path=str(current), reason=reason
+                )
+                continue
             report.rejects.extend(ev_rejects)
-            events_by_id = {e.event_id: e for e in events}
-
-            frames: list[FrameRecord] = []
-            if frames_path.exists():
-                frames, fr_rejects = parse_frames(frames_path, match.match_id, events_by_id)
-                report.rejects.extend(fr_rejects)
+            report.rejects.extend(fr_rejects)
 
             # Normalise, then optionally add the mirrored copy. The mirror is a
             # real row with its own event_id suffix so dedup and outcomes still
@@ -142,14 +229,22 @@ def ingest(
             store.upsert_frames(normalised, metas)
             store.upsert_outcomes(outcomes)
 
+            if normalised:
+                situations = [f.to_situation() for f in normalised]
+                for encoder in encoders:
+                    vectors = encode_many(encoder, situations)
+                    rows = [(f.event_id, vectors[i]) for i, f in enumerate(normalised)]
+                    if streaming:
+                        store.upsert_vectors(encoder.version, encoder.dim, rows)
+                    else:
+                        pending[encoder.version].extend(rows)
+            zones.add(normalised, {o.event_id: o for o in outcomes})
+            catalogue.add_match(match, events, normalised)
+
             report.matches += 1
             report.events += len(events)
             report.frames += len(normalised)
             report.outcomes += len(outcomes)
-            all_matches.append(match)
-            all_events.extend(events)
-            all_frames.extend(normalised)
-            all_metas.extend(metas)
             log.info(
                 "match_ingested",
                 match_id=match.match_id,
@@ -160,32 +255,21 @@ def ingest(
             break
 
     # --- derive -----------------------------------------------------------
-    encodings = tuple(encodings or available())
-    for encoding in encodings:
-        encoder = get_encoder(encoding)
-        situations = [f.to_situation() for f in all_frames]
-        rows: list[tuple[str, np.ndarray]] = []
-        if situations:
-            vectors = encode_many(encoder, situations)
-            rows = [(f.event_id, vectors[i]) for i, f in enumerate(all_frames)]
-        # Mirroring is applied to the *query* instead of the index: encoding the
-        # sketch twice costs microseconds, while a mirrored copy of every frame
-        # would double index size and build time for the same reach. See
-        # docs/design-notes.md.
-        n = store.upsert_vectors(encoder.version, encoder.dim, rows)
-        report.vectors[encoder.version] = n
-
-        outcome_map = store.outcomes([f.event_id for f in all_frames])
-        store.upsert_baselines(
-            compute_zone_baselines(
-                all_frames, outcome_map, encoding_version=encoder.version
+    # Mirroring is applied to the *query* instead of the index: encoding the
+    # sketch twice costs microseconds, while a mirrored copy of every frame
+    # would double index size and build time for the same reach. See
+    # docs/design-notes.md.
+    for encoder in encoders:
+        if streaming:
+            report.vectors[encoder.version] = store.vector_counts().get(encoder.version, 0)
+        else:
+            report.vectors[encoder.version] = store.upsert_vectors(
+                encoder.version, encoder.dim, pending.pop(encoder.version)
             )
-        )
+        store.upsert_baselines(zones.baselines(encoder.version))
         report.indexes.append(store.build_index(encoder.version, cfg.index_kind))
 
-    store.upsert_catalogue(
-        build_catalogue(all_matches, all_events, all_frames, {m.event_id: m for m in all_metas})
-    )
+    store.upsert_catalogue(catalogue.entries())
 
     report.seconds = time.perf_counter() - started
     log.info("ingest_complete", **report.as_dict())

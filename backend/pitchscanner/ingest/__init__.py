@@ -1,9 +1,10 @@
-from .catalogue import build_catalogue
+from .catalogue import CatalogueBuilder, build_catalogue
 from .fetch import fetch_open_data
 from .normalize import frame_meta, game_state_at, mirror_frame, normalise_frame
 from .pipeline import IngestReport, ingest, write_reject_log
 
 __all__ = [
+    "CatalogueBuilder",
     "IngestReport",
     "build_catalogue",
     "fetch_open_data",

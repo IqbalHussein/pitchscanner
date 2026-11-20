@@ -111,7 +111,7 @@ def test_id_codec_and_table_handle_awkward_uuids() -> None:
     assert (s2[np.searchsorted(s2, k2)] == k2).all()
 
 
-def test_pack_and_dtype_spec() -> None:
+def test_pack_and_dtype_spec(tmp_path: Path) -> None:
     assert _pack(np.array([0, 100])).dtype == np.int8
     assert _pack(np.array([-1, 300])).dtype == np.int16
     assert _pack(np.array([0, 70000])).dtype == np.int32
@@ -124,8 +124,10 @@ def test_pack_and_dtype_spec() -> None:
     }
     with pytest.raises(ValueError):
         parse_dtype_spec("E1=int8")
+    target = tmp_path / "never-created"
     with pytest.raises(ValueError):
-        ArrayStore.create(Path("/nonexistent-zzz"), dtypes={"E1": "float64"})
+        ArrayStore.create(target, dtypes={"E1": "float64"})
+    assert not target.exists()
 
 
 def _tiny(tmp_path: Path, settings: Settings) -> tuple[ArrayStore, MemoryStore]:

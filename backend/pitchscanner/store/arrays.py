@@ -392,6 +392,12 @@ class ArrayStore:
     ) -> ArrayStore:
         """A store that ingest writes into. ``dtypes`` maps encoding id to float32/float16."""
 
+        # Validate everything before touching the filesystem: a bad spec must create nothing.
+        merged = dict(DEFAULT_DTYPES)
+        merged.update({k.upper(): v for k, v in (dtypes or {}).items()})
+        bad = {v for v in merged.values() if v not in VECTOR_DTYPES}
+        if bad:
+            raise ValueError(f"vector dtype must be one of {VECTOR_DTYPES}, got {sorted(bad)}")
         store = cls()
         d = Path(out_dir)
         if d.exists() and any(d.iterdir()):
@@ -406,11 +412,6 @@ class ArrayStore:
         (d / "detail").mkdir(parents=True, exist_ok=True)
         store._writing = True
         store._dir = d
-        merged = dict(DEFAULT_DTYPES)
-        merged.update({k.upper(): v for k, v in (dtypes or {}).items()})
-        bad = {v for v in merged.values() if v not in VECTOR_DTYPES}
-        if bad:
-            raise ValueError(f"vector dtype must be one of {VECTOR_DTYPES}, got {sorted(bad)}")
         store._w_dtypes = merged
         return store
 

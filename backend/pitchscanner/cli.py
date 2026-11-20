@@ -21,9 +21,17 @@ log = get_logger(__name__)
 
 
 def _store(args: argparse.Namespace) -> tuple[Store, Path | None]:
-    from pitchscanner.store import MEMORY_SNAPSHOT, MemoryStore, PostgresStore
+    from pitchscanner.store import MEMORY_SNAPSHOT, ArrayStore, MemoryStore, PostgresStore
+    from pitchscanner.store.arrays import parse_dtype_spec
 
     cfg = get_settings()
+    if args.store == "arrays":
+        # Ingest streams into a new store directory; every other command reads one.
+        if args.command == "ingest":
+            if not args.out:
+                raise SystemExit("--store arrays ingest needs --out DIR")
+            return ArrayStore.create(args.out, dtypes=parse_dtype_spec(cfg.arrays_dtypes)), None
+        return ArrayStore.from_settings(cfg), None
     if args.store == "memory":
         path = Path(cfg.data_cache).parent / MEMORY_SNAPSHOT.name
         if getattr(args, "reuse", False) and path.exists():
@@ -41,6 +49,7 @@ def _competitions_arg(value: str) -> tuple[CompetitionSelector, ...]:
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     from pitchscanner.ingest import fetch_open_data, ingest, write_reject_log
+    from pitchscanner.store.arrays import ArrayStore
     from pitchscanner.store.memory import MemoryStore
 
     cfg = get_settings()
@@ -67,9 +76,26 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     if snapshot is not None and isinstance(store, MemoryStore):
         store.save(snapshot)
         log.info("snapshot_written", path=str(snapshot))
+    arrays_summary: dict[str, object] | None = None
+    if isinstance(store, ArrayStore):
+        source = "fixtures" if args.fixtures else str(data_dir)
+        arrays_summary = store.finalize(
+            extra_meta={
+                "source": source,
+                "open_data_commit": None if args.fixtures else cfg.open_data_commit,
+                "encodings_requested": args.encodings,
+            }
+        )
+        arrays_summary.pop("files", None)
     print(
         json.dumps(
-            {**report.as_dict(), "reject_log": args.reject_log, "rejects": rejects}, indent=2
+            {
+                **report.as_dict(),
+                "reject_log": args.reject_log,
+                "rejects": rejects,
+                **({"arrays": arrays_summary} if arrays_summary else {}),
+            },
+            indent=2,
         )
     )
     return 0
@@ -172,7 +198,7 @@ def cmd_openapi(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pitchscanner")
     parser.add_argument(
-        "--store", choices=("postgres", "memory"), default=get_settings().store
+        "--store", choices=("postgres", "memory", "arrays"), default=get_settings().store
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -188,6 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="comma-separated competition_id or competition_id:season_id entries "
         "(e.g. 55:282,9); only those matches are fetched and ingested",
     )
+    p.add_argument("--out", help="with --store arrays: the directory to write the store into")
     p.add_argument("--reject-log", default="bench/reports/rejects.jsonl")
     p.add_argument(
         "--fail-on-bad-file",

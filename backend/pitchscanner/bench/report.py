@@ -74,12 +74,19 @@ def run_all(
     encodings: Sequence[str] | None = None,
     quick: bool = False,
 ) -> Path:
+    from pitchscanner.store.arrays import ArrayStore
     from pitchscanner.store.memory import MemoryStore
 
     cfg = get_settings()
     # The report has to name the store it actually ran against, not the one the
     # environment happens to default to: the recall caveat below turns on it.
-    store_name = "memory" if isinstance(store, MemoryStore) else cfg.store
+    store_name = (
+        "memory"
+        if isinstance(store, MemoryStore)
+        else "arrays"
+        if isinstance(store, ArrayStore)
+        else cfg.store
+    )
     encodings = tuple(encodings or available())
     n_queries = 60 if quick else queries
     n_recall = 30 if quick else 200
@@ -175,7 +182,7 @@ def _recall_caveat(payload: BenchmarkPayload) -> str:
     """Say plainly when recall is measured against a backend that is already exact."""
 
     settings = payload["settings"]
-    if settings.get("store") == "memory":
+    if settings.get("store") in ("memory", "arrays"):
         return (
             "> These recall numbers were produced against the in-memory backend, "
             "which is exact by construction, so they are 1.0 by definition and mean "

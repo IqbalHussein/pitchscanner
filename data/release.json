@@ -1,1 +1,24 @@
-null
+{
+  "schema": 1,
+  "tag": "data-4b73468-4ffe0f9",
+  "statsbomb_commit": "4b73468fc5b0f1950f9f66fada70ad3a4f9327cb",
+  "code_sha": "4ffe0f91582d92a9ef57cdd9627cbaf9d27c3cc2",
+  "encodings": [
+    "E1-v1",
+    "E2-v1"
+  ],
+  "matches": 426,
+  "events": 1585353,
+  "frames": 1360388,
+  "format": "tar+gzip",
+  "unpacked_bytes": 991506412,
+  "packed_bytes": 711783565,
+  "assets": [
+    {
+      "name": "pitchscanner-data-4b73468-4ffe0f9.tar.gz",
+      "url": "https://github.com/IqbalHussein/pitchscanner/releases/download/data-4b73468-4ffe0f9/pitchscanner-data-4b73468-4ffe0f9.tar.gz",
+      "sha256": "af60f12b414de2a11f1b12860071b50fc5402bee7daafbfe675ba73959230714",
+      "bytes": 711783565
+    }
+  ]
+}

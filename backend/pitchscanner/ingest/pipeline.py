@@ -24,6 +24,7 @@ from pitchscanner.ingest.parse import (
     parse_events,
     parse_frames,
     parse_matches,
+    read_frames_tolerant,
 )
 from pitchscanner.ingest.selection import CompetitionSelector, is_selected
 from pitchscanner.labeller import label_match
@@ -41,6 +42,7 @@ class IngestReport:
     frames: int = 0
     outcomes: int = 0
     matches_skipped: int = 0
+    matches_salvaged: int = 0
     vectors: dict[str, int] = field(default_factory=dict)
     rejects: list[Reject] = field(default_factory=list)
     seconds: float = 0.0
@@ -57,6 +59,7 @@ class IngestReport:
             "frames": self.frames,
             "outcomes": self.outcomes,
             "matches_skipped": self.matches_skipped,
+            "matches_salvaged": self.matches_salvaged,
             "vectors": self.vectors,
             "rejects": len(self.rejects),
             "seconds": round(self.seconds, 2),
@@ -114,6 +117,11 @@ def ingest(
     a ``Reject`` and a warning are recorded and ``matches_skipped`` is incremented.
     ``fail_on_bad_file=True`` re-raises instead. Only data errors qualify; any other
     exception is a bug and propagates.
+
+    One exception for three-sixty files: if the strict parse fails and the file
+    contains NUL bytes, the complete frame objects either side of the damage are
+    recovered (``parse.read_frames_tolerant``) and the match is ingested with them,
+    recording a reject and ``matches_salvaged``. Events files are always strict.
     """
 
     cfg = settings or get_settings()
@@ -158,7 +166,31 @@ def ingest(
                 fr_rejects: list[Reject] = []
                 if frames_path.exists():
                     current = frames_path
-                    frames, fr_rejects = parse_frames(frames_path, match.match_id, events_by_id)
+                    try:
+                        frames, fr_rejects = parse_frames(
+                            frames_path, match.match_id, events_by_id
+                        )
+                    except json.JSONDecodeError:
+                        # Strict first, tolerant only after it fails, and never under
+                        # --fail-on-bad-file. Only NUL damage qualifies; anything else
+                        # re-raises into the skip below.
+                        recovered = None if fail_on_bad_file else read_frames_tolerant(frames_path)
+                        if recovered is None:
+                            raise
+                        raw_frames, salvage = recovered
+                        frames, fr_rejects = parse_frames(
+                            frames_path, match.match_id, events_by_id, raw_frames=raw_frames
+                        )
+                        fr_rejects.insert(
+                            0, Reject(str(frames_path), salvage.reason, match.match_id)
+                        )
+                        report.matches_salvaged += 1
+                        log.warning(
+                            "match_salvaged",
+                            match_id=match.match_id,
+                            path=str(frames_path),
+                            reason=salvage.reason,
+                        )
             except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError included
                 if fail_on_bad_file:
                     raise

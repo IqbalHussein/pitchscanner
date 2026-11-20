@@ -7,6 +7,7 @@ every record is validated and anything unusable is recorded with a reason.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -150,14 +151,107 @@ def parse_events(
     return events, goals, rejects
 
 
+#: Where a three-sixty frame object begins, whatever the file's whitespace style.
+_FRAME_START = re.compile(r'\{\s*"event_uuid"\s*:')
+
+
+@dataclass(frozen=True, slots=True)
+class Salvage:
+    """What a tolerant read of a damaged three-sixty file got back."""
+
+    recovered: int
+    #: Frames the damage swallowed, estimated from the size of the damaged span
+    #: and the mean size of the frames around it.
+    lost_estimate: int
+
+    @property
+    def reason(self) -> str:
+        return (
+            f"salvaged three-sixty file: recovered {self.recovered} frames, "
+            f"lost ~{self.lost_estimate}"
+        )
+
+
+def salvage_json_array(text: str) -> tuple[list[Any], Salvage] | None:
+    """Recover the complete objects of a top-level JSON array that has been damaged.
+
+    Only for a file the strict parser has already rejected. Objects are decoded one
+    at a time with ``JSONDecoder.raw_decode``; where one fails (a NUL run, which is
+    never valid JSON, lands inside it) the scan resumes at the next frame start. A
+    damaged object is dropped whole, never repaired: a number cut in half could
+    still parse as a different number, so nothing that touched the damage is kept.
+
+    Returns ``None`` when the text is not an array of objects to begin with.
+    """
+
+    decoder = json.JSONDecoder()
+    n = len(text)
+    pos = 0
+    while pos < n and text[pos].isspace():
+        pos += 1
+    if pos >= n or text[pos] != "[":
+        return None
+    pos += 1
+
+    items: list[Any] = []
+    intact_chars = 0
+    damaged_chars = 0
+    broke_an_object = False
+    while pos < n:
+        while pos < n and (text[pos].isspace() or text[pos] == ","):
+            pos += 1
+        if pos >= n or text[pos] == "]":
+            break
+        try:
+            obj, end = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            nxt = _FRAME_START.search(text, pos + 1)
+            resume = nxt.start() if nxt else n
+            damaged_chars += resume - pos
+            broke_an_object = broke_an_object or text[pos] == "{"
+            pos = resume
+            continue
+        if isinstance(obj, dict):
+            items.append(obj)
+            intact_chars += end - pos
+        pos = end
+
+    if not items:
+        return None
+    mean = intact_chars / len(items)
+    lost = round(damaged_chars / mean) if mean else 0
+    if broke_an_object:
+        lost = max(lost, 1)
+    return items, Salvage(recovered=len(items), lost_estimate=lost)
+
+
+def read_frames_tolerant(path: Path) -> tuple[list[Any], Salvage] | None:
+    """The raw frame objects of a three-sixty file whose NUL-damaged JSON will not
+    parse, or ``None`` if the file is not NUL damage (a truncation, bad encoding or
+    other corruption stays a skipped match)."""
+
+    text = path.read_text(encoding="utf-8")
+    if "\x00" not in text:
+        return None
+    return salvage_json_array(text)
+
+
 def parse_frames(
-    path: Path, match_id: int, events_by_id: dict[str, EventRecord]
+    path: Path,
+    match_id: int,
+    events_by_id: dict[str, EventRecord],
+    *,
+    raw_frames: list[Any] | None = None,
 ) -> tuple[list[FrameRecord], list[Reject]]:
-    """360 freeze frames, joined to their event for the ball position."""
+    """360 freeze frames, joined to their event for the ball position.
+
+    ``raw_frames`` carries objects already recovered by ``read_frames_tolerant``;
+    by default the file is read strictly.
+    """
 
     frames: list[FrameRecord] = []
     rejects: list[Reject] = []
-    for raw in load_json(path):
+    for raw in load_json(path) if raw_frames is None else raw_frames:
         event_id = str(raw.get("event_uuid", ""))
         event = events_by_id.get(event_id)
         if event is None:

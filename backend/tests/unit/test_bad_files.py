@@ -42,8 +42,16 @@ def clean(settings: Settings) -> tuple[IngestReport, MemoryStore]:
     return _run(FIXTURE_DIR, settings)
 
 
-@pytest.mark.parametrize("folder", ["three-sixty", "events"])
-@pytest.mark.parametrize("corrupt", [_nul, _truncate, _undecodable])
+# A NUL run in a three-sixty file is salvaged rather than skipped (test_salvage.py).
+_SKIPPED = [
+    (folder, corrupt)
+    for folder in ("three-sixty", "events")
+    for corrupt in (_nul, _truncate, _undecodable)
+    if not (folder == "three-sixty" and corrupt is _nul)
+]
+
+
+@pytest.mark.parametrize(("folder", "corrupt"), _SKIPPED)
 def test_bad_file_skips_only_that_match(
     folder: str, corrupt, tmp_path: Path, settings: Settings, clean
 ) -> None:
@@ -95,7 +103,7 @@ def test_skipped_match_does_not_use_up_the_limit(
 ) -> None:
     data = tmp_path / "data"
     shutil.copytree(FIXTURE_DIR, data)
-    _nul(data / "three-sixty" / f"{BAD}.json")
+    _truncate(data / "three-sixty" / f"{BAD}.json")
     clean_two, _ = _run(FIXTURE_DIR, settings, limit_matches=2)
     report, store = _run(data, settings, limit_matches=2)
     assert report.matches == 2 and report.matches_skipped <= 1

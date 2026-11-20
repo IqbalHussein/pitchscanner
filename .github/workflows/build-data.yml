@@ -35,11 +35,14 @@ jobs:
     timeout-minutes: 240
     env:
       PITCHSCANNER_STORE: arrays
-      PITCHSCANNER_DATA_CACHE: ${{ runner.temp }}/open-data
       COMPETITIONS: ${{ inputs.competitions }}
       ENCODINGS: ${{ inputs.encodings }}
     steps:
       - uses: actions/checkout@v4
+
+      # The runner context is not available in job-level env, so set this here.
+      - name: Set data cache path
+        run: echo "PITCHSCANNER_DATA_CACHE=$RUNNER_TEMP/open-data" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:

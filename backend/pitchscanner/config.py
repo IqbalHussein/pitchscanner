@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # --- data --------------------------------------------------------------
     open_data_repo: str = "https://github.com/statsbomb/open-data.git"
     #: Pinned so every build ingests byte-identical input.
-    open_data_commit: str = "0067cae166a56aa80b2ef18f61e16158d6a7359a"
+    open_data_commit: str = "4b73468fc5b0f1950f9f66fada70ad3a4f9327cb"
     data_cache: Path = Field(default=REPO_ROOT / ".data" / "open-data")
 
     # --- encoding and search ----------------------------------------------

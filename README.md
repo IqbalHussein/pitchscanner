@@ -84,7 +84,9 @@ make web       # frontend on :5173
 ```
 
 To run against the real dataset instead of the fixtures, point it at Postgres
-and let it fetch StatsBomb open data at the pinned commit:
+and let it fetch StatsBomb open data at the pinned commit
+(`4b73468fc5b0f1950f9f66fada70ad3a4f9327cb`, overridable with
+`PITCHSCANNER_OPEN_DATA_COMMIT`):
 
 ```bash
 docker compose up -d db

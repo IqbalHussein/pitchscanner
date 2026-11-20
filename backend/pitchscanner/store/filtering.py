@@ -8,6 +8,10 @@ a bug nobody notices until the numbers are wrong.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
+import numpy as np
+
 from pitchscanner.models import Filters
 from pitchscanner.store.base import FrameMeta
 
@@ -89,3 +93,81 @@ def to_sql(filters: Filters | None, params: dict[str, object]) -> str:
         clauses.append("f.zone_id = ANY(%(zone_ids)s)")
         params["zone_ids"] = list(filters.ball_zone_ids)
     return " AND ".join(clauses)
+
+
+def _isin(col: np.ndarray, values: Sequence[int]) -> np.ndarray:
+    """``col`` is one of ``values``, whatever small integer dtype the column is packed in."""
+
+    info = np.iinfo(col.dtype)
+    wanted = sorted({v for v in values if info.min <= v <= info.max})
+    if not wanted:
+        return np.zeros(len(col), dtype=bool)
+    if len(wanted) == 1:
+        return np.asarray(col == col.dtype.type(wanted[0]))
+    return np.asarray(np.isin(col, np.asarray(wanted, dtype=col.dtype)))
+
+
+def _codes(vocab: Sequence[str], names: Sequence[str]) -> list[int]:
+    return [vocab.index(n) for n in set(names) if n in vocab]
+
+
+def to_mask(
+    columns: Mapping[str, np.ndarray],
+    vocab: Mapping[str, Sequence[str]],
+    filters: Filters | None,
+) -> np.ndarray | None:
+    """The same predicate as ``matches``, evaluated over packed columns at once.
+
+    ``columns`` holds one array per ``FrameMeta`` field (strings as codes into
+    ``vocab``, a missing ``player_id`` as -1). Returns a boolean array with one
+    entry per row, or ``None`` when the filters keep every row. The clauses below
+    mirror ``matches`` one for one, in the same order; ``tests/unit/test_arrays_*``
+    checks the two agree on every row for random filters.
+    """
+
+    if filters is None or filters.is_empty():
+        return None
+    mask: np.ndarray | None = None
+
+    def keep(clause: np.ndarray) -> None:
+        nonlocal mask
+        if mask is None:
+            mask = clause
+        else:
+            mask &= clause
+
+    if filters.competition_ids:
+        keep(_isin(columns["competition_id"], filters.competition_ids))
+    if filters.season_ids:
+        keep(_isin(columns["season_id"], filters.season_ids))
+    if filters.team_ids:
+        role = filters.team_role
+        attacking = _isin(columns["possession_team_id"], filters.team_ids)
+        if role == "attacking":
+            keep(attacking)
+        else:
+            defending = _isin(columns["opponent_team_id"], filters.team_ids)
+            keep(defending if role == "defending" else attacking | defending)
+    if filters.player_ids:
+        player = columns["player_id"]
+        # -1 stands for "no player"; ``None`` is never in a list of ids.
+        keep(_isin(player, filters.player_ids) & (player != -1))
+    if filters.game_state != "any":
+        keep(_isin(columns["game_state"], _codes(vocab["game_state"], [filters.game_state])))
+    if filters.minute_range is not None:
+        lo, hi = filters.minute_range
+        minute = columns["minute"]
+        info = np.iinfo(minute.dtype)
+        lo, hi = max(lo, info.min), min(hi, info.max)
+        keep(
+            (minute >= minute.dtype.type(lo)) & (minute <= minute.dtype.type(hi))
+            if lo <= hi
+            else np.zeros(len(minute), dtype=bool)
+        )
+    if filters.venue != "any":
+        keep(np.asarray(columns["possession_is_home"] == (filters.venue == "home")))
+    if filters.stages:
+        keep(_isin(columns["stage"], _codes(vocab["stage"], filters.stages)))
+    if filters.ball_zone_ids:
+        keep(_isin(columns["zone_id"], filters.ball_zone_ids))
+    return mask

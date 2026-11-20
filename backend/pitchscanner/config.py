@@ -28,7 +28,23 @@ class Settings(BaseSettings):
     )
     store: str = Field(
         default="postgres",
-        description="'postgres' for the real thing, 'memory' for tests and the offline demo.",
+        description="'postgres' for the real thing, 'memory' for tests and the offline demo, "
+        "'arrays' for a directory of memory-mapped numpy arrays (no database).",
+    )
+    arrays_dir: Path | None = Field(
+        default=None,
+        description="Directory written by `pitchscanner ingest --store arrays --out DIR`. "
+        "Read when store=arrays.",
+    )
+    detail_base_url: str | None = Field(
+        default=None,
+        description="Fetch per-match detail files (`<match_id>.json.gz`) from this http(s) "
+        "base URL instead of `<arrays_dir>/detail`.",
+    )
+    detail_timeout_s: float = Field(default=10.0, description="Per request, in URL mode.")
+    arrays_dtypes: str = Field(
+        default="E0=float16,E1=float32,E2=float16",
+        description="Vector precision per encoding when writing an array store.",
     )
     fixture_dir: Path = Field(default=REPO_ROOT / "data" / "fixtures" / "statsbomb")
 

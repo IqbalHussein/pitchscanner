@@ -32,7 +32,7 @@ const initialState = (): SketchState => {
   const base: SketchState = {
     ball: preset.ball,
     players: preset.players.map((p) => ({ ...p, id: nextId() })),
-    k: 25,
+    k: 30,
     encoding: 'E1',
     mirror: true,
     filterText: '',

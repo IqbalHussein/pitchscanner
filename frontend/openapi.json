@@ -776,7 +776,7 @@
             "maximum": 100.0,
             "minimum": 1.0,
             "title": "K",
-            "default": 25
+            "default": 30
           },
           "filters": {
             "$ref": "#/components/schemas/Filters"
